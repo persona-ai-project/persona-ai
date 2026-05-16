@@ -89,6 +89,9 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/app
  
       NEXTAUTH_URL: http://localhost:3001
+      AUTH_GOOGLE_CLIENT_ID: 683461448228-nqqr37gbqcsi6f0ng2iagv3bch87l9a4.apps.googleusercontent.com
+      AUTH_GOOGLE_CLIENT_SECRET: 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
+      AUTH_GOOGLE_ALLOW_ACCOUNT_LINKING: "true"
       NEXTAUTH_SECRET: supersecret
       SALT: supersecret
  

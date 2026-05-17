@@ -1,8 +1,16 @@
-node_modules
+# dependencies
+node_modules/
+
+# env files
 .env
-.env.local
+
+# logs
+logs
+*.log
+
+# build
 dist
-build
-coverage
-.vscode
-.DS_Store
+.next
+__pycache__
+*.pyc
+*.pyo

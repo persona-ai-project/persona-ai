@@ -11,3 +11,6 @@ logs
 # build
 dist
 .next
+__pycache__
+*.pyc
+*.pyo

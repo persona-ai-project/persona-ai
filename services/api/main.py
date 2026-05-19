@@ -10,6 +10,14 @@ app = FastAPI(title="Persona AI API")
 def health_check():
     return {"status": "ok"}
 
+@app.get("/ping")
+def ping():
+    return {"pong": True}
+
+@app.get("/")
+def root():
+    return {"message": "Persona AI API is running"}
+
 
 def run_migrations():
     print("Running Alembic migrations...")
@@ -28,4 +36,10 @@ def run_migrations():
 
 if __name__ == "__main__":
     run_migrations()
-    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=False)
+    reload = os.getenv("RELOAD", "false").lower() == "true"
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8001")),
+        reload=reload
+    )

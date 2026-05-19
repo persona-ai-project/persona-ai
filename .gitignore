@@ -14,3 +14,11 @@ dist
 __pycache__
 *.pyc
 *.pyo
+
+node_modules
+.next
+pnpm-lock.yaml
+
+node_modules
+.next
+pnpm-lock.yaml

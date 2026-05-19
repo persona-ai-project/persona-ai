@@ -1,9 +1,12 @@
-# Changelog
+## [Sprint 1 - Day 3] - 2026-05-17
 
-## Day 1
+### Added
+- Chunk Pydantic v2 model in shared/contracts/chunk.py
+- ChunkList wrapper model
+- frozen=True for immutability in ingestion pipeline
+- API service added to docker-compose with hot-reload
+- Web (Next.js) service added to docker-compose on port 3002
+- Hot-reload verified for both API and web
 
-- Initialized repository
-- Added docker-compose setup
-- Added CI skeleton
-- Added CODEOWNERS
-- Added branch protections
+### Frozen Contracts
+- Chunk: text, source, source_id, created_at, metadata

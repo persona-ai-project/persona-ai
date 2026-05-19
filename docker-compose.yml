@@ -1,20 +1,4 @@
 services:
-
-  api:
-    build: ./services/api
-    container_name: api
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/app
-    volumes:
-      - ./services/api:/app
-
-
   postgres:
     image: postgres:16
     container_name: postgres
@@ -65,8 +49,6 @@ services:
       - "9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      # FIX: Mount custom config that enables built-in Keeper (replaces ZooKeeper)
-      # and defines the "default" cluster so ON CLUSTER DDL works on a single node
       - ./clickhouse-config.xml:/etc/clickhouse-server/config.d/langfuse.xml:ro
     healthcheck:
       test: ["CMD", "clickhouse-client", "--user=clickhouse", "--password=clickhouse", "--query", "SELECT 1"]
@@ -103,31 +85,25 @@ services:
       - "3001:3000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/app
- 
       NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: supersecret
+      SALT: supersecret
       AUTH_GOOGLE_CLIENT_ID: 683461448228-nqqr37gbqcsi6f0ng2iagv3bch87l9a4.apps.googleusercontent.com
       AUTH_GOOGLE_CLIENT_SECRET: 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
       AUTH_GOOGLE_ALLOW_ACCOUNT_LINKING: "true"
-      NEXTAUTH_SECRET: supersecret
-      SALT: supersecret
- 
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: clickhouse
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@clickhouse:9000/default
- 
       LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
- 
       REDIS_HOST: redis
       REDIS_PORT: 6379
- 
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY_ID: minio
       S3_SECRET_ACCESS_KEY: minio123
       S3_BUCKET_NAME: langfuse
       S3_REGION: us-east-1
       S3_FORCE_PATH_STYLE: "true"
-
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
       LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
@@ -135,10 +111,39 @@ services:
       LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: minio123
       LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
  
+  api:
+    build: ./services/api
+    container_name: api
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/persona
+      RELOAD: "true"
+      PORT: "8001"
+    volumes:
+      - ./services/api:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+ 
+  web:
+    build: ./apps/web
+    container_name: web
+    restart: always
+    ports:
+      - "3002:3002"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8001
+ 
 volumes:
   postgres_data:
   redis_data:
   qdrant_data:
   clickhouse_data:
   minio_data:
-

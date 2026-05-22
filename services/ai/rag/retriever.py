@@ -6,7 +6,8 @@ from qdrant_client.models import (
     VectorParams, Distance, PointStruct,
     PayloadSchemaType, SparseVectorParams, SparseIndexParams
 )
-from qdrant_client.models import Filter, FieldCondition, MatchValue, NamedVector
+from qdrant_client.models import Prefetch, FusionQuery, Fusion, Filter, FieldCondition, MatchValue
+from qdrant_client.models import NamedVector
 from services.ai.rag.embedder import Embedder
 
 # Load environment variables from .env file
@@ -57,11 +58,9 @@ def ensure_collection():
 def index(user_id: str, chunks: list) -> int:
     """
     Embed and store a list of text chunks in Qdrant for a specific user.
-
     Args:
         user_id: Unique identifier for the user
         chunks: List of Chunk objects to index
-
     Returns:
         Number of chunks successfully indexed
     """
@@ -103,12 +102,10 @@ def index(user_id: str, chunks: list) -> int:
 def search(user_id: str, query: str, k: int = 8) -> list:
     """
     Search for relevant chunks using dense vector similarity.
-
     Args:
         user_id: Filter results to this user only
         query: Search query text
         k: Number of top results to return (default 8)
-
     Returns:
         List of matching chunks with scores
     """
@@ -138,8 +135,133 @@ def search(user_id: str, query: str, k: int = 8) -> list:
         }
         for r in results
     ]
+def search_hybrid(user_id: str, query: str, k: int = 8) -> list:
+    """
+    Search using both dense and sparse vectors fused via RRF.
+    Better than dense-only search for persona memory retrieval.
+    Args:
+        user_id: Filter results to this user only
+        query: Search query text
+        k: Number of top results to return (default 8)
+    Returns:
+        List of matching chunks with scores
+    """
 
-# Quick test
+    # Embed query to get both dense and sparse vectors
+    vectors = embedder.embed(query)
+
+    # User filter — only return chunks belonging to this user
+    user_filter = Filter(
+        must=[FieldCondition(
+            key="user_id",
+            match=MatchValue(value=user_id)
+        )]
+    )
+
+    # Run hybrid search with RRF fusion
+    results = client.query_points(
+        collection_name=COLLECTION_NAME,
+        prefetch=[
+            # Dense search prefetch
+            Prefetch(
+                query=vectors["dense"].tolist(),
+                using="dense",
+                limit=k * 2
+            ),
+            # Sparse search prefetch
+            Prefetch(
+                query={
+                    "indices": vectors["sparse"].indices.tolist(),
+                    "values": vectors["sparse"].values.tolist()
+                },
+                using="sparse",
+                limit=k * 2
+            )
+        ],
+        query=FusionQuery(fusion=Fusion.RRF),
+        query_filter=user_filter,
+        limit=k
+    ).points
+
+    # Apply recency boost
+    now = datetime.now(timezone.utc)
+    boosted = []
+
+    for r in results:
+        score = r.score
+        created_at = datetime.fromisoformat(r.payload["created_at"])
+        days_old = (now - created_at).days
+
+        # Boost recent chunks (last 14 days)
+        if days_old <= 14:
+            score = score * 1.5
+
+        boosted.append({
+            "text": r.payload["text"],
+            "source": r.payload["source"],
+            "score": round(score, 3)
+        })
+
+    from shared.contracts.retriever import RetrievedChunk, RetrievalResult
+
+    boosted.sort(key=lambda x: x["score"], reverse=True)
+
+    return RetrievalResult(
+        user_id=user_id,
+        query=query,
+        chunks=[RetrievedChunk(**c) for c in boosted],
+        total=len(boosted)
+    )
+
+def delete(user_id: str, source: str = None) -> int:
+    """
+    Delete chunks for a user. Optionally filter by source.
+    Args:
+        user_id: User whose chunks to delete
+        source: Optional source filter (e.g. "whatsapp")
+    Returns:
+        Number of chunks deleted
+    """
+    # Build filter
+    conditions = [FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+
+    if source:
+        conditions.append(
+            FieldCondition(key="source", match=MatchValue(value=source))
+        )
+
+    client.delete(
+        collection_name=COLLECTION_NAME,
+        points_selector=Filter(must=conditions)
+    )
+
+    return 1
+
+
+def stats(user_id: str) -> dict:
+    """
+    Get chunk statistics for a user.
+    Args:
+        user_id: User to get stats for
+    Returns:
+        Dictionary with total chunks and breakdown by source
+    """
+    # Count total chunks for user
+    result = client.count(
+        collection_name=COLLECTION_NAME,
+        count_filter=Filter(
+            must=[FieldCondition(
+                key="user_id",
+                match=MatchValue(value=user_id)
+            )]
+        )
+    )
+
+    return {
+        "user_id": user_id,
+        "total_chunks": result.count
+    }
+# Quick test for Dense Search
 # if __name__ == "__main__":
 #     from shared.contracts.chunk import Chunk
 #     from datetime import datetime, timezone
@@ -205,3 +327,13 @@ def search(user_id: str, query: str, k: int = 8) -> list:
 #     print(f"\n✅ Search results (top 5):")
 #     for r in results:
 #         print(f"  Score: {r['score']:.3f} | {r['text'][:60]}...")
+
+
+# if __name__ == "__main__":
+#     result = search_hybrid("demo-user", "what food do I like?", k=3)
+#     print(f"user_id: {result.user_id}")
+#     print(f"query: {result.query}")
+#     print(f"total: {result.total}")
+#     print("\nChunks:")
+#     for chunk in result.chunks:
+#         print(f"  Score: {chunk.score} | {chunk.text}")

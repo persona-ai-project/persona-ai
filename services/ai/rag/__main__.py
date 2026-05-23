@@ -1,4 +1,5 @@
 import sys
+import os
 import json
 from datetime import datetime, timezone
 from shared.contracts.chunk import Chunk
@@ -15,8 +16,7 @@ def main():
 
     command = sys.argv[1]   # "index"
     user_id = sys.argv[2]   # "demo-user"
-    filepath = sys.argv[3] if sys.argv[3].startswith("C:") else f"C:/Users/tashf/persona-ai/{sys.argv[3]}"  # "examples/sample.jsonl"
-
+    filepath = sys.argv[3] if os.path.isabs(sys.argv[3]) else os.path.join(os.getcwd(), sys.argv[3])
     if command == "index":
         # Read chunks from jsonl file
         chunks = []

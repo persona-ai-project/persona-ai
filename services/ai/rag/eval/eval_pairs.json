@@ -1,0 +1,102 @@
+[
+  {
+    "query": "what food does the user like?",
+    "expected_source_id": "q3",
+    "expected_text_snippet": "biryani"
+  },
+  {
+    "query": "where does the user live?",
+    "expected_source_id": "q4",
+    "expected_text_snippet": "Lahore"
+  },
+  {
+    "query": "what is the user's profession?",
+    "expected_source_id": "q2",
+    "expected_text_snippet": "software engineer"
+  },
+  {
+    "query": "what sport does the user follow?",
+    "expected_source_id": "q1",
+    "expected_text_snippet": "cricket"
+  },
+  {
+    "query": "what is the user currently learning?",
+    "expected_source_id": "q5",
+    "expected_text_snippet": "machine learning"
+  },
+  {
+    "query": "what university did the user attend?",
+    "expected_source_id": "q2",
+    "expected_text_snippet": "GCU"
+  },
+  {
+    "query": "what does the user eat every day?",
+    "expected_source_id": "q3",
+    "expected_text_snippet": "biryani"
+  },
+  {
+    "query": "what city is the user from?",
+    "expected_source_id": "q4",
+    "expected_text_snippet": "Lahore"
+  },
+  {
+    "query": "what matches does the user follow?",
+    "expected_source_id": "q1",
+    "expected_text_snippet": "cricket"
+  },
+  {
+    "query": "what field does the user work in?",
+    "expected_source_id": "q2",
+    "expected_text_snippet": "engineer"
+  },
+  {
+    "query": "what is the user excited about learning?",
+    "expected_source_id": "q5",
+    "expected_text_snippet": "machine learning"
+  },
+  {
+    "query": "what does the user like to eat daily?",
+    "expected_source_id": "q3",
+    "expected_text_snippet": "biryani"
+  },
+  {
+    "query": "where has the user lived their whole life?",
+    "expected_source_id": "q4",
+    "expected_text_snippet": "Lahore"
+  },
+  {
+    "query": "what game does the user love?",
+    "expected_source_id": "q1",
+    "expected_text_snippet": "cricket"
+  },
+  {
+    "query": "what is the user's job?",
+    "expected_source_id": "q2",
+    "expected_text_snippet": "software engineer"
+  },
+  {
+    "query": "what technology is the user studying?",
+    "expected_source_id": "q5",
+    "expected_text_snippet": "machine learning"
+  },
+  {
+    "query": "what does the user find exciting to study?",
+    "expected_source_id": "q5",
+    "expected_text_snippet": "exciting"
+  },
+  {
+    "query": "what is the user's favorite meal?",
+    "expected_source_id": "q3",
+    "expected_text_snippet": "biryani"
+  },
+  {
+    "query": "which college did the user graduate from?",
+    "expected_source_id": "q2",
+    "expected_text_snippet": "GCU"
+  },
+  {
+    "query": "what sport does the user watch closely?",
+    "expected_source_id": "q1",
+    "expected_text_snippet": "cricket"
+  }
+]

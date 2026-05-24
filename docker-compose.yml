@@ -138,6 +138,10 @@ services:
     restart: always
     ports:
       - "3002:3002"
+
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8001
  
@@ -147,3 +151,4 @@ volumes:
   qdrant_data:
   clickhouse_data:
   minio_data:
+  web_node_modules:

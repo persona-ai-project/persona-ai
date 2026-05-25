@@ -124,8 +124,12 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/persona
       RELOAD: "true"
       PORT: "8001"
+      QDRANT_URL: ${QDRANT_URL}
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
     volumes:
       - ./services/api:/app
+      - ./shared:/app/shared
+      - ./services/ai:/app/services_ai
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/healthz"]
       interval: 10s

@@ -21,6 +21,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+import time
  
 # Add paths for P1's modules
 AI_PATH = os.path.join(os.path.dirname(__file__), '..', 'services_ai')
@@ -115,6 +116,7 @@ def _update_status(
             job.error = error
         db.commit()
     print(f"[runner] Job {job_id} → {status.value}")
+    time.sleep(0.5)  # Remove in production
  
  
 def create_job(
@@ -160,12 +162,14 @@ def run_ingestion_job(
     try:
         # Step 1 — parsing
         _update_status(db, job_id, JobStatus.PARSING)
+        time.sleep(0.5)  # Remove in production
         raw_text = _parse_file(file_path, source_type)
         if not raw_text or not raw_text.strip():
             raise ValueError(f"Parser returned empty text for {file_path}")
  
         # Step 2 — chunking (P1's chunk_text returns list[str])
         _update_status(db, job_id, JobStatus.CHUNKING)
+        time.sleep(0.5)  # Remove in production
         text_chunks: list[str] = chunk_text(raw_text)
         if not text_chunks:
             raise ValueError("Chunker returned 0 chunks")
@@ -187,12 +191,14 @@ def run_ingestion_job(
  
         # Step 3 — embedding + indexing into Qdrant
         _update_status(db, job_id, JobStatus.EMBEDDING)
+        time.sleep(0.5)  # Remove in production
         sys.path.insert(0, "/app/services_ai")
         from rag.retriever import index as rag_index
         rag_index(user_id=str(user_id), chunks=chunks)
  
         # Step 4 — done
         _update_status(db, job_id, JobStatus.INDEXED)
+        time.sleep(0.5)  # Remove in production
         print(f"[runner] Job {job_id}: completed successfully")
  
     except Exception as e:
@@ -200,6 +206,7 @@ def run_ingestion_job(
         print(f"[runner] Job {job_id}: FAILED — {error_msg}")
         try:
             _update_status(db, job_id, JobStatus.FAILED, error=error_msg)
+            time.sleep(0.5)  # Remove in production
         except Exception:
             pass
     finally:

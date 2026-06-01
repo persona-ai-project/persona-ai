@@ -21,7 +21,9 @@ app = FastAPI(title="Persona AI API")
  
 # Register routers
 from routers.ingest import router as ingest_router
+from routers.voice import router as voice_router
 app.include_router(ingest_router)
+app.include_router(voice_router)
  
  
 @app.get("/healthz")

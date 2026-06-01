@@ -130,6 +130,7 @@ services:
       R2_AUDIO_BUCKET: ${R2_AUDIO_BUCKET}
       R2_INGEST_BUCKET: ${R2_INGEST_BUCKET}
       REDIS_URL: redis://redis:6379
+      GROQ_API_KEY: ${GROQ_API_KEY}
      
       QDRANT_URL: ${QDRANT_URL}
       QDRANT_API_KEY: ${QDRANT_API_KEY}

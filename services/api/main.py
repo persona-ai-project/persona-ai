@@ -2,10 +2,19 @@ import os
 import subprocess
 import uvicorn
 import uuid
+feature/day13-voice-contract
+
+
+main
  
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, text
+feature/day13-voice-contract
+
+from sqlalchemy.orm import sessionmaker
+ 
+main
 from storage.client import get_presigned_url, upload_bytes, R2_INGEST_BUCKET
 from ingest.runner import create_job, JobStatus
  
@@ -25,6 +34,10 @@ app.include_router(voice_router)
  
 @app.get("/healthz")
 def health_check():
+feature/day13-voice-contract
+
+    # Git SHA
+main
     try:
         sha = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -33,6 +46,9 @@ def health_check():
     except Exception:
         sha = "unknown"
  
+feature/day13-voice-contract
+    # DB ping
+main
     try:
         engine = create_engine(DATABASE_URL)
         with engine.connect() as conn:
@@ -41,14 +57,36 @@ def health_check():
     except Exception:
         db_ok = False
  
+feature/day13-voice-contract
     try:
         from qdrant_client import QdrantClient
         qc = QdrantClient(url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"))
+
+    # Qdrant ping
+    try:
+        from qdrant_client import QdrantClient
+        qc = QdrantClient(
+            url=os.getenv("QDRANT_URL"),
+            api_key=os.getenv("QDRANT_API_KEY"),
+        )
+main
         qc.get_collections()
         qdrant_ok = True
     except Exception:
         qdrant_ok = False
  
+feature/day13-voice-contract
+
+    # # Redis ping
+    # try:
+    #     r = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379"))
+    #     r.ping()
+    #     redis_ok = True
+    # except Exception:
+    #     redis_ok = False
+
+    # Redis ping
+    main
     try:
         import redis as redis_lib
         r = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379"))
@@ -58,6 +96,10 @@ def health_check():
         redis_ok = False
  
     all_ok = db_ok and qdrant_ok and redis_ok
+feature/day13-voice-contract
+
+ 
+main
     return JSONResponse(
         status_code=200 if all_ok else 503,
         content={

@@ -22,3 +22,7 @@ pnpm-lock.yaml
 node_modules
 .next
 pnpm-lock.yaml
+
+# Piper voice models
+services/api/voice/voices/*.onnx
+services/api/voice/voices/*.onnx.json

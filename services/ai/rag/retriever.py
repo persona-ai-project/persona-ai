@@ -8,7 +8,7 @@ from qdrant_client.models import (
 )
 from qdrant_client.models import Prefetch, FusionQuery, Fusion, Filter, FieldCondition, MatchValue
 from qdrant_client.models import NamedVector
-from services.ai.rag.embedder import Embedder
+from rag.embedder import Embedder
 
 # Load environment variables from .env file
 load_dotenv()

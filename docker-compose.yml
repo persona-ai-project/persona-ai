@@ -124,19 +124,34 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/persona
       RELOAD: "true"
       PORT: "8001"
+changelog
       QDRANT_URL: ${QDRANT_URL}
       QDRANT_API_KEY: ${QDRANT_API_KEY}
+
+main
       R2_ENDPOINT: ${R2_ENDPOINT}
       R2_ACCESS_KEY: ${R2_ACCESS_KEY}
       R2_SECRET_KEY: ${R2_SECRET_KEY}
       R2_AUDIO_BUCKET: ${R2_AUDIO_BUCKET}
       R2_INGEST_BUCKET: ${R2_INGEST_BUCKET}
+changelog
       GROQ_API_KEY: ${GROQ_API_KEY}
       REDIS_URL: redis://redis:6379
     volumes:
        - ./services/api:/app
        - ./shared:/app/shared
        - ./services/ai:/app/services_ai
+
+      REDIS_URL: redis://redis:6379
+      GROQ_API_KEY: ${GROQ_API_KEY}
+     
+      QDRANT_URL: ${QDRANT_URL}
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+    volumes:
+      - ./services/api:/app
+      - ./shared:/app/shared
+      - ./services/ai:/app/services_ai
+ main
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/healthz"]
       interval: 10s
@@ -149,6 +164,10 @@ services:
     restart: always
     ports:
       - "3002:3002"
+
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8001
  
@@ -158,3 +177,4 @@ volumes:
   qdrant_data:
   clickhouse_data:
   minio_data:
+  web_node_modules:

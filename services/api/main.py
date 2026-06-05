@@ -2,10 +2,25 @@ import os
 import subprocess
 import uvicorn
 import uuid
+changelog
+=======
+feature/day13-voice-contract
+
+
+main
+main
  
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, text
+changelog
+=======
+feature/day13-voice-contract
+
+from sqlalchemy.orm import sessionmaker
+ 
+main
+main
 from storage.client import get_presigned_url, upload_bytes, R2_INGEST_BUCKET
 from ingest.runner import create_job, JobStatus
  
@@ -25,6 +40,13 @@ app.include_router(voice_router)
  
 @app.get("/healthz")
 def health_check():
+changelog
+=======
+feature/day13-voice-contract
+
+    # Git SHA
+main
+main
     try:
         sha = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -33,6 +55,12 @@ def health_check():
     except Exception:
         sha = "unknown"
  
+changelog
+=======
+feature/day13-voice-contract
+    # DB ping
+main
+main
     try:
         engine = create_engine(DATABASE_URL)
         with engine.connect() as conn:
@@ -41,14 +69,45 @@ def health_check():
     except Exception:
         db_ok = False
  
+changelog
     try:
         from qdrant_client import QdrantClient
         qc = QdrantClient(url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"))
+=======
+feature/day13-voice-contract
+    try:
+        from qdrant_client import QdrantClient
+        qc = QdrantClient(url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"))
+
+    # Qdrant ping
+    try:
+        from qdrant_client import QdrantClient
+        qc = QdrantClient(
+            url=os.getenv("QDRANT_URL"),
+            api_key=os.getenv("QDRANT_API_KEY"),
+        )
+main
+ main
         qc.get_collections()
         qdrant_ok = True
     except Exception:
         qdrant_ok = False
  
+changelog
+=======
+feature/day13-voice-contract
+
+    # # Redis ping
+    # try:
+    #     r = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379"))
+    #     r.ping()
+    #     redis_ok = True
+    # except Exception:
+    #     redis_ok = False
+
+    # Redis ping
+    main
+main
     try:
         import redis as redis_lib
         r = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379"))
@@ -58,6 +117,13 @@ def health_check():
         redis_ok = False
  
     all_ok = db_ok and qdrant_ok and redis_ok
+changelog
+=======
+feature/day13-voice-contract
+
+ 
+main
+main
     return JSONResponse(
         status_code=200 if all_ok else 503,
         content={

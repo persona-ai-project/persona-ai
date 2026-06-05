@@ -1,42 +1,50 @@
 """
-Ingestion Job State Machine
-============================
+Ingestion Job Runner
+====================
+Uses P1's real chunker and Qdrant indexer.
 
-Each ingestion job moves through the following states:
-
-    queued → parsing → chunking → embedding → indexed
-                                                  ↓
-                                               failed (from any state)
-
-State descriptions:
-    queued    — job created, waiting to be picked up by a worker
-    parsing   — document is being read and converted to raw text
-    chunking  — raw text is being split into Chunk objects
-    embedding — chunks are being converted to vectors via embedder
-    indexed   — all vectors stored in Qdrant, job complete
-    failed    — an error occurred at any stage, error stored in DB
-
-Each state transition:
-    1. Updates ingestion_jobs.status in Postgres
-    2. Optionally updates ingestion_jobs.error if failed
-    3. Logs the transition to Langfuse for observability
-
-Database columns used:
-    ingestion_jobs.id         — UUID job identifier
-    ingestion_jobs.user_id    — who owns this job
-    ingestion_jobs.status     — current state (string)
-    ingestion_jobs.source     — original file path or URL
-    ingestion_jobs.error      — error message if failed
-    ingestion_jobs.created_at — when job was created
+Pipeline:
+    queued → parsing → chunking → embedding → indexed → failed
 """
 from __future__ import annotations
 
 import uuid
+import os
+import sys
+import ssl
+import time
+import nltk
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
+from pathlib import Path
 
 from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+# Add paths for P1's modules
+AI_PATH = os.path.join(os.path.dirname(__file__), '..', 'services_ai')
+ROOT_PATH = os.path.join(os.path.dirname(__file__), '..', '..', '..')
+sys.path.insert(0, AI_PATH)
+sys.path.insert(0, ROOT_PATH)
+
+from shared.contracts.chunk import Chunk
+
+# ── NLTK setup ────────────────────────────────────────────────────────────────
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+
+nltk.download('punkt', quiet=True)
+nltk.download('punkt_tab', quiet=True)
+
+# ── P1 real imports ───────────────────────────────────────────────────────────
+from rag.chunker import chunk_text          # returns list[str]
+# rag_index imported inside run_ingestion_job to avoid path issues
 
 
 # ── state definitions ─────────────────────────────────────────────────────────
@@ -50,106 +58,71 @@ class JobStatus(str, Enum):
     FAILED    = "failed"
 
 
-# Valid state transitions — only these moves are allowed
-VALID_TRANSITIONS: dict[JobStatus, list[JobStatus]] = {
-    JobStatus.QUEUED:    [JobStatus.PARSING,   JobStatus.FAILED],
-    JobStatus.PARSING:   [JobStatus.CHUNKING,  JobStatus.FAILED],
-    JobStatus.CHUNKING:  [JobStatus.EMBEDDING, JobStatus.FAILED],
-    JobStatus.EMBEDDING: [JobStatus.INDEXED,   JobStatus.FAILED],
-    JobStatus.INDEXED:   [],   # terminal state
-    JobStatus.FAILED:    [],   # terminal state
-}
+# ── parser dispatch ───────────────────────────────────────────────────────────
+
+def _parse_file(file_path: str, source_type: str) -> str:
+    """Dispatch to correct parser, return raw text."""
+    path = Path(file_path)
+
+    if source_type == "pdf":
+        import pypdf
+        reader = pypdf.PdfReader(file_path)
+        return "\n\n".join(
+            page.extract_text() or "" for page in reader.pages
+        )
+
+    elif source_type == "docx":
+        import docx as python_docx
+        doc = python_docx.Document(file_path)
+        return "\n\n".join(
+            p.text.strip() for p in doc.paragraphs if p.text.strip()
+        )
+
+    elif source_type in ("markdown", "md", "text", "txt"):
+        return path.read_text(encoding="utf-8", errors="replace")
+
+    elif source_type == "whatsapp":
+        if "::" in file_path:
+            actual_path, owner_name = file_path.split("::", 1)
+        else:
+            actual_path, owner_name = file_path, "unknown"
+        from parsers.whatsapp import parse_whatsapp
+        chunks = parse_whatsapp(actual_path, owner_name=owner_name)
+        return "\n\n".join(c.text for c in chunks)
+
+    elif source_type == "url":
+        import trafilatura
+        downloaded = trafilatura.fetch_url(file_path)
+        return trafilatura.extract(downloaded) or ""
+
+    else:
+        raise ValueError(f"Unknown source_type: {source_type}")
 
 
-# ── state machine ─────────────────────────────────────────────────────────────
+# ── db helpers ────────────────────────────────────────────────────────────────
 
-class IngestionRunner:
-    """
-    Manages state transitions for a single ingestion job.
-
-    Usage:
-        runner = IngestionRunner(job_id=uuid, db=session)
-        runner.transition(JobStatus.PARSING)
-        # ... do parsing work ...
-        runner.transition(JobStatus.CHUNKING)
-        # ... do chunking work ...
-        runner.transition(JobStatus.EMBEDDING)
-        # ... do embedding work ...
-        runner.transition(JobStatus.INDEXED)
-    """
-
-    def __init__(self, job_id: uuid.UUID, db: Session):
-        self.job_id = job_id
-        self.db = db
-
-    def transition(
-        self,
-        new_status: JobStatus,
-        error: Optional[str] = None,
-    ) -> None:
-        """
-        Move the job to a new state.
-
-        Args:
-            new_status: The state to transition to
-            error:      Error message (only used when transitioning to FAILED)
-
-        Raises:
-            ValueError: If the transition is not valid from the current state
-        """
-        from db.models.models import IngestionJob
-
-        job = self.db.query(IngestionJob).filter(
-            IngestionJob.id == self.job_id
-        ).first()
-
-        if not job:
-            raise ValueError(f"Job {self.job_id} not found")
-
-        current = JobStatus(job.status)
-
-        # Validate the transition is allowed
-        if new_status not in VALID_TRANSITIONS[current]:
-            raise ValueError(
-                f"Invalid transition: {current} → {new_status}. "
-                f"Allowed: {VALID_TRANSITIONS[current]}"
-            )
-
-        # Update DB
-        job.status = new_status.value
+def _update_status(
+    db: Session,
+    job_id: uuid.UUID,
+    status: JobStatus,
+    error: Optional[str] = None,
+) -> None:
+    from db.models.models import IngestionJob
+    job = db.query(IngestionJob).filter(IngestionJob.id == job_id).first()
+    if job:
+        job.status = status.value
         if error:
             job.error = error
+        db.commit()
+    print(f"[runner] Job {job_id} → {status.value}")
 
-        self.db.commit()
-        self.db.refresh(job)
-
-        print(f"[IngestionRunner] Job {self.job_id}: {current} → {new_status}")
-
-    def fail(self, error: str) -> None:
-        """Convenience method to mark a job as failed with an error message."""
-        self.transition(JobStatus.FAILED, error=error)
-
-
-# ── standalone helper ─────────────────────────────────────────────────────────
 
 def create_job(
     db: Session,
     user_id: uuid.UUID,
     source: str,
 ) -> uuid.UUID:
-    """
-    Create a new ingestion job in QUEUED state.
-
-    Args:
-        db:      Database session
-        user_id: UUID of the user who owns the job
-        source:  File path or URL being ingested
-
-    Returns:
-        UUID of the newly created job
-    """
     from db.models.models import IngestionJob
-
     job = IngestionJob(
         id=uuid.uuid4(),
         user_id=user_id,
@@ -160,6 +133,77 @@ def create_job(
     db.add(job)
     db.commit()
     db.refresh(job)
-
-    print(f"[IngestionRunner] Created job {job.id} for user {user_id}")
+    print(f"[runner] Created job {job.id} for user {user_id}")
     return job.id
+
+
+# ── main runner ───────────────────────────────────────────────────────────────
+
+def run_ingestion_job(
+    job_id: uuid.UUID,
+    user_id: uuid.UUID,
+    file_path: str,
+    source_type: str,
+    db_url: str = "postgresql://postgres:postgres@localhost:5432/persona",
+) -> None:
+    """
+    Full ingestion pipeline via FastAPI BackgroundTasks.
+
+    queued → parsing → chunking → embedding → indexed
+                                                  ↓
+                                               failed
+    """
+    engine = create_engine(db_url)
+    SessionLocal = sessionmaker(bind=engine)
+    db = SessionLocal()
+
+    try:
+        # Step 1 — parsing
+        _update_status(db, job_id, JobStatus.PARSING)
+        time.sleep(0.5)  # Allow P3 to see progress — remove in production
+        raw_text = _parse_file(file_path, source_type)
+        if not raw_text or not raw_text.strip():
+            raise ValueError(f"Parser returned empty text for {file_path}")
+
+        # Step 2 — chunking (P1's chunk_text returns list[str])
+        _update_status(db, job_id, JobStatus.CHUNKING)
+        time.sleep(0.5)  # Allow P3 to see progress — remove in production
+        text_chunks: list[str] = chunk_text(raw_text)
+        if not text_chunks:
+            raise ValueError("Chunker returned 0 chunks")
+
+        # Wrap strings into Chunk objects for the indexer
+        now = datetime.now(timezone.utc)
+        chunks: list[Chunk] = [
+            Chunk(
+                text=text,
+                source=source_type,
+                source_id=file_path,
+                created_at=now,
+                metadata={"chunk_index": i},
+            )
+            for i, text in enumerate(text_chunks)
+            if text.strip()
+        ]
+        print(f"[runner] Job {job_id}: {len(chunks)} chunks created")
+
+        # Step 3 — embedding + indexing into Qdrant
+        _update_status(db, job_id, JobStatus.EMBEDDING)
+        time.sleep(0.5)  # Allow P3 to see progress — remove in production
+        sys.path.insert(0, "/app/services_ai")
+        from rag.retriever import index as rag_index
+        rag_index(user_id=str(user_id), chunks=chunks)
+
+        # Step 4 — done
+        _update_status(db, job_id, JobStatus.INDEXED)
+        print(f"[runner] Job {job_id}: completed successfully")
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[runner] Job {job_id}: FAILED — {error_msg}")
+        try:
+            _update_status(db, job_id, JobStatus.FAILED, error=error_msg)
+        except Exception:
+            pass
+    finally:
+        db.close()

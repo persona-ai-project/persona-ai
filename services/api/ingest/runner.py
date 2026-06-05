@@ -2,7 +2,11 @@
 Ingestion Job Runner
 ====================
 Uses P1's real chunker and Qdrant indexer.
+changelog
+
+=======
  
+main
 Pipeline:
     queued → parsing → chunking → embedding → indexed → failed
 """
@@ -12,33 +16,63 @@ import uuid
 import os
 import sys
 import ssl
+changelog
+import time
+=======
+main
 import nltk
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from pathlib import Path
+changelog
+
+from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+=======
  
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import time
  
+main
 # Add paths for P1's modules
 AI_PATH = os.path.join(os.path.dirname(__file__), '..', 'services_ai')
 ROOT_PATH = os.path.join(os.path.dirname(__file__), '..', '..', '..')
 sys.path.insert(0, AI_PATH)
 sys.path.insert(0, ROOT_PATH)
+changelog
+
+from shared.contracts.chunk import Chunk
+
+# ── NLTK setup ────────────────────────────────────────────────────────────────
+=======
  
 from shared.contracts.chunk import Chunk
  
 # ── NLTK setup ────────────────────────────────────────────────────────────────
 # Fix SSL issues and download required tokenizer data
+main
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
     pass
 else:
     ssl._create_default_https_context = _create_unverified_https_context
+changelog
+
+nltk.download('punkt', quiet=True)
+nltk.download('punkt_tab', quiet=True)
+
+# ── P1 real imports ───────────────────────────────────────────────────────────
+from rag.chunker import chunk_text          # returns list[str]
+# rag_index imported inside run_ingestion_job to avoid path issues
+
+
+=======
  
 nltk.download('punkt', quiet=True)
 nltk.download('punkt_tab', quiet=True)
@@ -48,6 +82,7 @@ from rag.chunker import chunk_text          # returns list[str]
 # rag_index imported inside run_ingestion_job to avoid path issues
  
  
+main
 # ── state definitions ─────────────────────────────────────────────────────────
  
 class JobStatus(str, Enum):
@@ -57,6 +92,16 @@ class JobStatus(str, Enum):
     EMBEDDING = "embedding"
     INDEXED   = "indexed"
     FAILED    = "failed"
+changelog
+
+
+# ── parser dispatch ───────────────────────────────────────────────────────────
+
+def _parse_file(file_path: str, source_type: str) -> str:
+    """Dispatch to correct parser, return raw text."""
+    path = Path(file_path)
+
+=======
  
  
 # ── parser dispatch ───────────────────────────────────────────────────────────
@@ -65,23 +110,35 @@ def _parse_file(file_path: str, source_type: str) -> str:
     """Dispatch to correct parser, return raw text."""
     path = Path(file_path)
  
+main
     if source_type == "pdf":
         import pypdf
         reader = pypdf.PdfReader(file_path)
         return "\n\n".join(
             page.extract_text() or "" for page in reader.pages
         )
+changelog
+
+=======
  
+ main
     elif source_type == "docx":
         import docx as python_docx
         doc = python_docx.Document(file_path)
         return "\n\n".join(
             p.text.strip() for p in doc.paragraphs if p.text.strip()
         )
+changelog
+
+    elif source_type in ("markdown", "md", "text", "txt"):
+        return path.read_text(encoding="utf-8", errors="replace")
+
+=======
  
     elif source_type in ("markdown", "md", "text", "txt"):
         return path.read_text(encoding="utf-8", errors="replace")
  
+main
     elif source_type == "whatsapp":
         if "::" in file_path:
             actual_path, owner_name = file_path.split("::", 1)
@@ -90,11 +147,24 @@ def _parse_file(file_path: str, source_type: str) -> str:
         from parsers.whatsapp import parse_whatsapp
         chunks = parse_whatsapp(actual_path, owner_name=owner_name)
         return "\n\n".join(c.text for c in chunks)
+changelog
+
+=======
  
+main
     elif source_type == "url":
         import trafilatura
         downloaded = trafilatura.fetch_url(file_path)
         return trafilatura.extract(downloaded) or ""
+changelog
+
+    else:
+        raise ValueError(f"Unknown source_type: {source_type}")
+
+
+# ── db helpers ────────────────────────────────────────────────────────────────
+
+=======
  
     else:
         raise ValueError(f"Unknown source_type: {source_type}")
@@ -102,6 +172,7 @@ def _parse_file(file_path: str, source_type: str) -> str:
  
 # ── db helpers ────────────────────────────────────────────────────────────────
  
+main
 def _update_status(
     db: Session,
     job_id: uuid.UUID,
@@ -116,9 +187,14 @@ def _update_status(
             job.error = error
         db.commit()
     print(f"[runner] Job {job_id} → {status.value}")
+changelog
+
+
+=======
     time.sleep(0.5)  # Remove in production
  
  
+ main
 def create_job(
     db: Session,
     user_id: uuid.UUID,
@@ -137,10 +213,17 @@ def create_job(
     db.refresh(job)
     print(f"[runner] Created job {job.id} for user {user_id}")
     return job.id
+changelog
+
+
+# ── main runner ───────────────────────────────────────────────────────────────
+
+=======
  
  
 # ── main runner ───────────────────────────────────────────────────────────────
  
+main
 def run_ingestion_job(
     job_id: uuid.UUID,
     user_id: uuid.UUID,
@@ -150,7 +233,11 @@ def run_ingestion_job(
 ) -> None:
     """
     Full ingestion pipeline via FastAPI BackgroundTasks.
+changelog
+
+=======
  
+main
     queued → parsing → chunking → embedding → indexed
                                                   ↓
                                                failed
@@ -158,6 +245,24 @@ def run_ingestion_job(
     engine = create_engine(db_url)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
+changelog
+
+    try:
+        # Step 1 — parsing
+        _update_status(db, job_id, JobStatus.PARSING)
+        time.sleep(0.5)  # Allow P3 to see progress — remove in production
+        raw_text = _parse_file(file_path, source_type)
+        if not raw_text or not raw_text.strip():
+            raise ValueError(f"Parser returned empty text for {file_path}")
+
+        # Step 2 — chunking (P1's chunk_text returns list[str])
+        _update_status(db, job_id, JobStatus.CHUNKING)
+        time.sleep(0.5)  # Allow P3 to see progress — remove in production
+        text_chunks: list[str] = chunk_text(raw_text)
+        if not text_chunks:
+            raise ValueError("Chunker returned 0 chunks")
+
+=======
  
     try:
         # Step 1 — parsing
@@ -174,6 +279,7 @@ def run_ingestion_job(
         if not text_chunks:
             raise ValueError("Chunker returned 0 chunks")
  
+main
         # Wrap strings into Chunk objects for the indexer
         now = datetime.now(timezone.utc)
         chunks: list[Chunk] = [
@@ -188,6 +294,20 @@ def run_ingestion_job(
             if text.strip()
         ]
         print(f"[runner] Job {job_id}: {len(chunks)} chunks created")
+changelog
+
+        # Step 3 — embedding + indexing into Qdrant
+        _update_status(db, job_id, JobStatus.EMBEDDING)
+        time.sleep(0.5)  # Allow P3 to see progress — remove in production
+        sys.path.insert(0, "/app/services_ai")
+        from rag.retriever import index as rag_index
+        rag_index(user_id=str(user_id), chunks=chunks)
+
+        # Step 4 — done
+        _update_status(db, job_id, JobStatus.INDEXED)
+        print(f"[runner] Job {job_id}: completed successfully")
+
+=======
  
         # Step 3 — embedding + indexing into Qdrant
         _update_status(db, job_id, JobStatus.EMBEDDING)
@@ -201,13 +321,21 @@ def run_ingestion_job(
         time.sleep(0.5)  # Remove in production
         print(f"[runner] Job {job_id}: completed successfully")
  
+main
     except Exception as e:
         error_msg = str(e)
         print(f"[runner] Job {job_id}: FAILED — {error_msg}")
         try:
             _update_status(db, job_id, JobStatus.FAILED, error=error_msg)
+changelog
+        except Exception:
+            pass
+    finally:
+        db.close()
+=======
             time.sleep(0.5)  # Remove in production
         except Exception:
             pass
     finally:
         db.close()
+main

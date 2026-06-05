@@ -1,7 +1,10 @@
 """
 routers/voice.py
 ================
+changelog
+=======
 feature/day13-voice-contract
+main
 Voice routes: STT transcription + TTS synthesis.
 """
 from __future__ import annotations
@@ -13,6 +16,8 @@ from shared.contracts.voice import TranscribeResponse, SynthesiseResponse, Voice
  
 router = APIRouter(prefix="/voice", tags=["voice"])
  
+changelog
+=======
 
 Voice transcription HTTP routes.
 
@@ -28,6 +33,7 @@ from voice.stt import transcribe
 router = APIRouter(prefix="/voice", tags=["voice"])
 
 main
+main
 ALLOWED_CONTENT_TYPES = {
     "audio/webm",
     "audio/mp4",
@@ -35,7 +41,10 @@ ALLOWED_CONTENT_TYPES = {
     "audio/mpeg",
     "audio/ogg",
     "audio/flac",
+changelog
+=======
 feature/day13-voice-contract
+main
     "video/webm",
     "audio/vnd.dlna.adts",
     "audio/aac",
@@ -46,6 +55,8 @@ MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
  
  
 @router.post("/transcribe", response_model=TranscribeResponse)
+changelog
+=======
 
     "video/webm",   # MediaRecorder sometimes sends this
     "audio/vnd.dlna.adts",   # AAC — iPhone voice memos
@@ -58,16 +69,22 @@ MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB — Groq's limit
 
 @router.post("/transcribe")
 main
+main
 async def transcribe_audio(
     file: UploadFile = File(...),
 ):
     """
     Transcribe audio using Groq Whisper.
+changelog
+=======
  feature/day13-voice-contract
+main
     Accepts: audio/webm, audio/mp4, audio/wav, audio/mpeg, audio/ogg, audio/flac
     """
     from voice.stt import transcribe
  
+changelog
+=======
 
 
     Accepts: audio/webm, audio/mp4, audio/wav, audio/mpeg, audio/ogg, audio/flac
@@ -82,6 +99,7 @@ async def transcribe_audio(
     """
     # Validate content type
 main
+main
     content_type = file.content_type or "audio/webm"
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -89,7 +107,10 @@ main
             detail=f"Unsupported audio format: {content_type}. "
                    f"Allowed: {sorted(ALLOWED_CONTENT_TYPES)}"
         )
+changelog
+=======
 feature/day13-voice-contract
+main
  
     audio_bytes = await file.read()
     if not audio_bytes:
@@ -100,6 +121,8 @@ feature/day13-voice-contract
             detail=f"File too large: {len(audio_bytes)/1024/1024:.1f}MB. Max: 25MB"
         )
  
+changelog
+=======
 
 
     # Read file bytes
@@ -116,6 +139,7 @@ feature/day13-voice-contract
 
     # Transcribe
 main
+main
     start = time.perf_counter()
     try:
         result = await transcribe(audio_bytes, content_type)
@@ -126,7 +150,10 @@ main
     except Exception as e:
         print(f"[voice] Transcription error: {e}")
         raise HTTPException(status_code=500, detail="Transcription failed")
+changelog
+=======
 feature/day13-voice-contract
+main
  
     latency_ms = int((time.perf_counter() - start) * 1000)
     print(f"[voice] Total latency: {latency_ms}ms")
@@ -191,6 +218,8 @@ async def synthesise_speech(
         "char_count": len(text),
         "latency_ms": latency_ms,
         "cached":     latency_ms < 100,
+changelog
+=======
 
 
     latency_ms = int((time.perf_counter() - start) * 1000)
@@ -199,5 +228,6 @@ async def synthesise_speech(
     return {
         **result,
         "latency_ms": latency_ms,
+main
 main
     }

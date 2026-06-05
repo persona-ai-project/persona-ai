@@ -328,7 +328,11 @@ def get_job_status(job_id: str):
         db.close()
 
 
+changelog
+@router.delete("/source/{source_id}")
+=======
 @router.delete("/source")
+main
 def delete_source(source_id: str, user_id: str):
     """
     Delete all data for a source:

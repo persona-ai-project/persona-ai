@@ -8,7 +8,7 @@ from qdrant_client.models import (
 )
 from qdrant_client.models import Prefetch, FusionQuery, Fusion, Filter, FieldCondition, MatchValue
 from qdrant_client.models import NamedVector
-from rag.embedder import Embedder
+from services.ai.rag.embedder import Embedder
 
 # Load environment variables from .env file
 load_dotenv()
@@ -337,3 +337,21 @@ def stats(user_id: str) -> dict:
 #     print("\nChunks:")
 #     for chunk in result.chunks:
 #         print(f"  Score: {chunk.score} | {chunk.text}")
+
+
+# if __name__ == "__main__":
+#     queries = [
+#         "what food does this person like?",
+#         "what do they do for work?",
+#         "what are their hobbies?",
+#         "what are they learning?",
+#         "what is their dream?"
+#     ]
+#
+#     print("=== End-to-End RAG Test (30 chunks) ===\n")
+#     for query in queries:
+#         result = search_hybrid("demo-user-30", query, k=3)
+#         print(f"Query: {query}")
+#         for chunk in result.chunks:
+#             print(f"  {chunk.score:.2f} | {chunk.text}")
+#         print()

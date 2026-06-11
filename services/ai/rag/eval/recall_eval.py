@@ -42,12 +42,11 @@ def run_eval():
         expected_snippet = pair["expected_text_snippet"]
 
         # Search top 5
-        results = search_hybrid("eval-user", query, k=5)
+        result = search_hybrid("eval-user", query, k=5)
 
-        # Check if expected snippet appears in any top 5 result
         found = any(
-            expected_snippet.lower() in r["text"].lower()
-            for r in results
+            expected_snippet.lower() in chunk.text.lower()
+            for chunk in result.chunks
         )
 
         if found:

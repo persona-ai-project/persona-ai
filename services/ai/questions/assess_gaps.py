@@ -10,7 +10,7 @@ STALE = "stale"
 FIELD_RULES = {
     "name":        {"min_length": 2},
     "profession":  {"min_length": 3},
-    "city":        {"min_length": 2},
+    # "city":        {"min_length": 2},
     "hobbies":     {"min_list": 1},
     "goals":       {"min_list": 1},
     "personality": {"min_length": 10},

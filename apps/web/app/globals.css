@@ -1,0 +1,104 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  .theme {
+    --font-heading: var(--font-sans);
+    --font-sans: var(--font-sans);
+  }
+
+  :root {
+    --background: #0a0a1a;
+    --foreground: #ffffff;
+    --surface: #111128;
+    --card: #111128;
+    --card-foreground: #ffffff;
+    --popover: #111128;
+    --popover-foreground: #ffffff;
+    --primary: #8b5cf6;
+    --primary-foreground: #ffffff;
+    --secondary: #111128;
+    --secondary-foreground: #ffffff;
+    --muted: #16162e;
+    --muted-foreground: #a1a1b5;
+    --accent: #8b5cf6;
+    --accent-foreground: #ffffff;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: rgba(255, 255, 255, 0.1);
+    --input: rgba(255, 255, 255, 0.12);
+    --ring: #8b5cf6;
+    --chart-1: #8b5cf6;
+    --chart-2: #a78bfa;
+    --chart-3: #c4b5fd;
+    --chart-4: #6d28d9;
+    --chart-5: #4c1d95;
+    --radius: 0.625rem;
+    --sidebar: #111128;
+    --sidebar-foreground: #ffffff;
+    --sidebar-primary: #8b5cf6;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #16162e;
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: rgba(255, 255, 255, 0.1);
+    --sidebar-ring: #8b5cf6;
+  }
+
+  .dark {
+    --background: #0a0a1a;
+    --foreground: #ffffff;
+    --surface: #111128;
+    --card: #111128;
+    --card-foreground: #ffffff;
+    --popover: #111128;
+    --popover-foreground: #ffffff;
+    --primary: #8b5cf6;
+    --primary-foreground: #ffffff;
+    --secondary: #111128;
+    --secondary-foreground: #ffffff;
+    --muted: #16162e;
+    --muted-foreground: #a1a1b5;
+    --accent: #8b5cf6;
+    --accent-foreground: #ffffff;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: rgba(255, 255, 255, 0.1);
+    --input: rgba(255, 255, 255, 0.12);
+    --ring: #8b5cf6;
+    --chart-1: #8b5cf6;
+    --chart-2: #a78bfa;
+    --chart-3: #c4b5fd;
+    --chart-4: #6d28d9;
+    --chart-5: #4c1d95;
+    --sidebar: #111128;
+    --sidebar-foreground: #ffffff;
+    --sidebar-primary: #8b5cf6;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #16162e;
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: rgba(255, 255, 255, 0.1);
+    --sidebar-ring: #8b5cf6;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    color-scheme: dark;
+  }
+
+  html {
+    @apply font-sans;
+  }
+}

@@ -2,51 +2,48 @@ import os
 import subprocess
 import uvicorn
 import uuid
-changelog
-=======
-feature/day13-voice-contract
 
-
-main
-main
- 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, text
-changelog
-=======
-feature/day13-voice-contract
+from routers.auth import router as auth_router
+from routers.persona import router as persona_router
 
-from sqlalchemy.orm import sessionmaker
- 
-main
-main
-from storage.client import get_presigned_url, upload_bytes, R2_INGEST_BUCKET
-from ingest.runner import create_job, JobStatus
- 
+app = FastAPI(title="Persona AI API")
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://postgres:postgres@postgres:5432/persona"
 )
- 
-app = FastAPI(title="Persona AI API")
- 
+
 # Register routers
 from routers.ingest import router as ingest_router
 from routers.voice import router as voice_router
+from routers.chat import router as chat_router
+from routers.questions import router as questions_router
+from routers.feedback import router as feedback_router
+
+app.include_router(chat_router)
+app.include_router(questions_router)
+app.include_router(feedback_router)
 app.include_router(ingest_router)
 app.include_router(voice_router)
- 
- 
+app.include_router(auth_router)
+app.include_router(persona_router)
+
+
 @app.get("/healthz")
 def health_check():
-changelog
-=======
-feature/day13-voice-contract
-
     # Git SHA
-main
-main
     try:
         sha = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -54,13 +51,8 @@ main
         ).decode().strip()
     except Exception:
         sha = "unknown"
- 
-changelog
-=======
-feature/day13-voice-contract
+
     # DB ping
-main
-main
     try:
         engine = create_engine(DATABASE_URL)
         with engine.connect() as conn:
@@ -68,16 +60,6 @@ main
         db_ok = True
     except Exception:
         db_ok = False
- 
-changelog
-    try:
-        from qdrant_client import QdrantClient
-        qc = QdrantClient(url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"))
-=======
-feature/day13-voice-contract
-    try:
-        from qdrant_client import QdrantClient
-        qc = QdrantClient(url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"))
 
     # Qdrant ping
     try:
@@ -86,28 +68,12 @@ feature/day13-voice-contract
             url=os.getenv("QDRANT_URL"),
             api_key=os.getenv("QDRANT_API_KEY"),
         )
-main
- main
         qc.get_collections()
         qdrant_ok = True
     except Exception:
         qdrant_ok = False
- 
-changelog
-=======
-feature/day13-voice-contract
-
-    # # Redis ping
-    # try:
-    #     r = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379"))
-    #     r.ping()
-    #     redis_ok = True
-    # except Exception:
-    #     redis_ok = False
 
     # Redis ping
-    main
-main
     try:
         import redis as redis_lib
         r = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379"))
@@ -115,15 +81,9 @@ main
         redis_ok = True
     except Exception:
         redis_ok = False
- 
-    all_ok = db_ok and qdrant_ok and redis_ok
-changelog
-=======
-feature/day13-voice-contract
 
- 
-main
-main
+    all_ok = db_ok and qdrant_ok and redis_ok
+
     return JSONResponse(
         status_code=200 if all_ok else 503,
         content={
@@ -134,25 +94,25 @@ main
             "redis": redis_ok,
         }
     )
- 
- 
+
+
 @app.get("/ping")
 def ping():
     return {"pong": True}
- 
- 
+
+
 @app.get("/")
 def root():
     return {"message": "Persona AI API is running"}
- 
- 
+
+
 @app.post("/ingest/presign")
 def get_upload_url(filename: str, content_type: str = "application/pdf"):
     key = f"uploads/{uuid.uuid4()}/{filename}"
     url = get_presigned_url(key=key, bucket=R2_INGEST_BUCKET, expires_in=3600, method="put_object")
     return {"upload_url": url, "key": key}
- 
- 
+
+
 def run_migrations():
     print("Running Alembic migrations...")
     result = subprocess.run(
@@ -166,10 +126,10 @@ def run_migrations():
         print("Migration error:", result.stderr)
         raise RuntimeError("Migrations failed")
     print("Migrations complete.")
- 
- 
+
+
 if __name__ == "__main__":
-    run_migrations()
+   # run_migrations()
     reload = os.getenv("RELOAD", "false").lower() == "true"
     uvicorn.run(
         "main:app",

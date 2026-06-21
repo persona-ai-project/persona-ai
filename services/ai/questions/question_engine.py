@@ -3,10 +3,17 @@ import json
 from dotenv import load_dotenv
 from google import genai
 from services.ai.questions.assess_gaps import assess_gaps
-
-# Load environment variables
 from pathlib import Path
-env_path = Path(__file__).resolve().parents[1] / "rag" / ".env"
+
+
+# Try multiple possible .env locations
+for env_path in [
+    Path(__file__).resolve().parents[1] / "rag" / ".env",
+    Path(__file__).resolve().parents[3] / "services" / "api" / ".env",
+]:
+    if env_path.exists():
+        load_dotenv(env_path)
+        break
 load_dotenv(env_path)
 
 # Configure Gemini

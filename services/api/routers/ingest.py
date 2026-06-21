@@ -30,6 +30,7 @@ AI_PATH   = os.path.join(ROOT_PATH, 'services', 'ai')
 sys.path.insert(0, ROOT_PATH)
 sys.path.insert(0, AI_PATH)
 
+
 from storage.client import upload_bytes, get_presigned_url, R2_INGEST_BUCKET
 from ingest.runner import create_job, run_ingestion_job, JobStatus
 
@@ -328,11 +329,7 @@ def get_job_status(job_id: str):
         db.close()
 
 
-changelog
 @router.delete("/source/{source_id}")
-=======
-@router.delete("/source")
-main
 def delete_source(source_id: str, user_id: str):
     """
     Delete all data for a source:

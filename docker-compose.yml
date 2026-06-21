@@ -16,7 +16,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
- 
+
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -25,7 +25,7 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
- 
+
   qdrant:
     image: qdrant/qdrant:latest
     container_name: qdrant
@@ -35,7 +35,7 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
- 
+
   clickhouse:
     image: clickhouse/clickhouse-server:latest
     container_name: clickhouse
@@ -45,8 +45,8 @@ services:
       CLICKHOUSE_PASSWORD: clickhouse
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
-      - "8123:8123"
-      - "9000:9000"
+      - "18123:8123"
+      - "19000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./clickhouse-config.xml:/etc/clickhouse-server/config.d/langfuse.xml:ro
@@ -55,7 +55,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
- 
+
   minio:
     image: minio/minio
     container_name: minio
@@ -65,11 +65,11 @@ services:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio123
     ports:
-      - "9001:9001"
-      - "9002:9000"
+      - "9091:9001"
+      - "9092:9000"
     volumes:
       - minio_data:/data
- 
+
   langfuse:
     image: langfuse/langfuse:latest
     container_name: langfuse
@@ -93,8 +93,8 @@ services:
       AUTH_GOOGLE_ALLOW_ACCOUNT_LINKING: "true"
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: clickhouse
-      CLICKHOUSE_URL: http://clickhouse:8123
-      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@clickhouse:9000/default
+      CLICKHOUSE_URL: http://clickhouse:18123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@clickhouse:19000/default
       LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -110,7 +110,7 @@ services:
       LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
       LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: minio123
       LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
- 
+
   api:
     build: ./services/api
     container_name: api
@@ -124,53 +124,37 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/persona
       RELOAD: "true"
       PORT: "8001"
-changelog
       QDRANT_URL: ${QDRANT_URL}
       QDRANT_API_KEY: ${QDRANT_API_KEY}
-
-main
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      REDIS_URL: redis://redis:6379
       R2_ENDPOINT: ${R2_ENDPOINT}
       R2_ACCESS_KEY: ${R2_ACCESS_KEY}
       R2_SECRET_KEY: ${R2_SECRET_KEY}
       R2_AUDIO_BUCKET: ${R2_AUDIO_BUCKET}
       R2_INGEST_BUCKET: ${R2_INGEST_BUCKET}
-changelog
-      GROQ_API_KEY: ${GROQ_API_KEY}
-      REDIS_URL: redis://redis:6379
-    volumes:
-       - ./services/api:/app
-       - ./shared:/app/shared
-       - ./services/ai:/app/services_ai
-
-      REDIS_URL: redis://redis:6379
-      GROQ_API_KEY: ${GROQ_API_KEY}
-     
-      QDRANT_URL: ${QDRANT_URL}
-      QDRANT_API_KEY: ${QDRANT_API_KEY}
     volumes:
       - ./services/api:/app
       - ./shared:/app/shared
       - ./services/ai:/app/services_ai
- main
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
- 
+
   web:
     build: ./apps/web
     container_name: web
     restart: always
     ports:
       - "3002:3002"
-
     volumes:
       - ./apps/web:/app
       - web_node_modules:/app/node_modules
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8001
- 
+
 volumes:
   postgres_data:
   redis_data:

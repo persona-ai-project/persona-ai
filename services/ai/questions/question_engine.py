@@ -12,15 +12,21 @@ load_dotenv(env_path)
 # Configure Gemini
 client_gemini = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
+# Hand-curated starter questions for new users (onboarding)
+STARTER_QUESTIONS = [
+    "Hey! What's your name?",
+    "What do you do — are you working, studying, or both?",
+    "What are you passionate about or interested in?",
+    "How would you describe your personality in a few words?",
+    "What's one goal you're really working towards right now?"
+]
 
 def next_question(user_id: str, persona_json: dict) -> dict:
     """
     Generate the next interview question based on persona gaps.
-
     Args:
         user_id: Unique identifier for the user
         persona_json: Current state of user's persona
-
     Returns:
         NextQuestionResponse with question, gap_field, gap_type
     """
@@ -76,11 +82,18 @@ def next_question(user_id: str, persona_json: dict) -> dict:
 
 # Quick test
 # if __name__ == "__main__":
+#     # Test starter questions
+#     print("=== Starter Questions ===")
+#     for i, q in enumerate(STARTER_QUESTIONS):
+#         print(f"{i+1}. {q}")
+#
+#     # Test next_question with empty persona
+#     print("\n=== Generated Question (empty persona) ===")
 #     test_persona = {
-#         "name": "Bilal",
+#         "name": "Sara",
 #         "profession": "",
-#         "city": "Lahore",
-#         "hobbies": ["cricket"],
+#         "city": "",
+#         "hobbies": [],
 #         "goals": [],
 #         "personality": "",
 #         "background": "",

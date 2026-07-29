@@ -4,12 +4,21 @@ import uvicorn
 import uuid
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, text
 from routers.auth import router as auth_router
 from routers.persona import router as persona_router
 
 app = FastAPI(title="Persona AI API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3002"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -29,11 +38,11 @@ DATABASE_URL = os.getenv(
 from routers.ingest import router as ingest_router
 from routers.voice import router as voice_router
 from routers.chat import router as chat_router
-from routers.questions import router as questions_router
+# from routers.questions import router as questions_router
 from routers.feedback import router as feedback_router
 
 app.include_router(chat_router)
-app.include_router(questions_router)
+# app.include_router(questions_router)
 app.include_router(feedback_router)
 app.include_router(ingest_router)
 app.include_router(voice_router)

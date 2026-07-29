@@ -124,6 +124,8 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/persona
       RELOAD: "true"
       PORT: "8001"
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
       QDRANT_URL: ${QDRANT_URL}
       QDRANT_API_KEY: ${QDRANT_API_KEY}
       GROQ_API_KEY: ${GROQ_API_KEY}
@@ -136,7 +138,7 @@ services:
     volumes:
       - ./services/api:/app
       - ./shared:/app/shared
-      - ./services/ai:/app/services_ai
+      - ./services/ai:/app/services/ai
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/healthz"]
       interval: 10s

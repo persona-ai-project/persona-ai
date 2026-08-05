@@ -15,14 +15,20 @@ from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-API_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-ROOT_PATH = os.path.abspath(os.path.join(API_DIR, '..', '..'))
-AI_PATH = os.path.join(ROOT_PATH, 'services', 'ai')
-sys.path.insert(0, API_DIR)
-sys.path.insert(0, ROOT_PATH)
-sys.path.insert(0, AI_PATH)
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from shared.contracts.chunk import Chunk
+from pydantic import BaseModel, ConfigDict, Field
+from datetime import datetime
+from typing import Any
+
+
+class Chunk(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    text: str
+    source: str
+    source_id: str
+    created_at: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 # NLTK setup
 try:

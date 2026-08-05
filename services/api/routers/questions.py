@@ -210,7 +210,20 @@ def submit_answer(request: AnswerRequest, current_user: dict = Depends(get_curre
             # Index answer into Qdrant
             try:
                 from services.ai.rag.retriever import index
-                from shared.contracts.chunk import Chunk
+                try:
+                    from shared.contracts.chunk import Chunk
+                except ImportError:
+                    from pydantic import BaseModel, ConfigDict, Field
+                    from datetime import datetime as _dt
+                    from typing import Any
+
+                    class Chunk(BaseModel):
+                        model_config = ConfigDict(frozen=True)
+                        text: str
+                        source: str
+                        source_id: str
+                        created_at: _dt
+                        metadata: dict[str, Any] = Field(default_factory=dict)
 
                 chunk = Chunk(
                     text=f"Q: {request.question} A: {request.answer}",
@@ -266,3 +279,4 @@ def get_next_question(user_id: str, persona_json: dict, current_user: dict = Dep
         return NextQuestionResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

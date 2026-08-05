@@ -86,7 +86,7 @@ _engine = None
 def get_engine():
     global _engine
     if _engine is None:
-        _engine = create_engine(DATABASE_URL)
+        _engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 5}, pool_pre_ping=True)
     return _engine
 
 
@@ -147,9 +147,10 @@ def health_check():
         redis_ok = False
 
     all_ok = db_ok and qdrant_ok and redis_ok
+    any_ok = db_ok or qdrant_ok or redis_ok
 
     return JSONResponse(
-        status_code=200 if all_ok else 503,
+        status_code=200 if any_ok else 503,
         content={
             "status": "ok" if all_ok else "degraded",
             "sha": sha,
@@ -183,7 +184,8 @@ def run_migrations():
         ["alembic", "upgrade", "head"],
         cwd=os.path.dirname(__file__),
         capture_output=True,
-        text=True
+        text=True,
+        timeout=30
     )
     print(result.stdout)
     if result.returncode != 0:

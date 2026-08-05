@@ -15,6 +15,10 @@ class User(Base):
     id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email          = Column(Text, unique=True, nullable=False)
     password_hash  = Column(Text, nullable=True)
+    full_name      = Column(Text, nullable=True)
+    avatar_url     = Column(Text, nullable=True)
+    auth_provider  = Column(Text, default="local", nullable=False)
+    google_sub     = Column(Text, unique=True, nullable=True)
     created_at     = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
     is_active      = Column(Boolean, default=True, nullable=False)
 

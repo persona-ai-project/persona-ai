@@ -1,11 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: {
+            client_id: string;
+            callback: (response: { credential: string }) => void;
+          }) => void;
+          renderButton: (
+            parent: HTMLElement,
+            config: {
+              type: "standard";
+              theme: string;
+              size: string;
+              text: string;
+              shape: string;
+              width: number;
+            }
+          ) => void;
+        };
+      };
+    };
+  }
+}
 
 function GoogleIcon() {
   return (
@@ -37,33 +64,128 @@ interface GoogleButtonProps {
 export function GoogleButton({ className }: GoogleButtonProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [scriptLoaded, setScriptLoaded] = useState(false);
+  const buttonContainerRef = useRef<HTMLDivElement>(null);
+  const googleInitialized = useRef(false);
 
-  const handleClick = () => {
-    if (isLoading) return;
-    setIsLoading(true);
-    setTimeout(() => {
-      router.push("/onboarding");
-    }, 1000);
-  };
+  const handleGoogleCredential = useCallback(
+    async (response: { credential: string }) => {
+      if (isLoading) return;
+      setIsLoading(true);
+
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/auth/google`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ credential: response.credential }),
+          }
+        );
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data?.detail || "Google login failed.");
+        }
+
+        localStorage.setItem("access_token", data.access_token);
+        localStorage.setItem("user_id", data.user_id);
+
+        const personaRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/persona/${data.user_id}`,
+          {
+            headers: { Authorization: `Bearer ${data.access_token}` },
+          }
+        );
+        const persona = await personaRes.json();
+        const isEmpty =
+          !persona?.traits?.length &&
+          !persona?.communication_style &&
+          !persona?.identity?.name;
+
+        toast.success("Logged in with Google!");
+        router.push(isEmpty ? "/onboarding" : "/dashboard");
+      } catch (error) {
+        setIsLoading(false);
+        toast.error(
+          error instanceof Error ? error.message : "Google login failed."
+        );
+      }
+    },
+    [isLoading, router]
+  );
+
+  useEffect(() => {
+    if (googleInitialized.current) return;
+
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) return;
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      setScriptLoaded(true);
+      if (window.google?.accounts?.id) {
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleGoogleCredential,
+        });
+        googleInitialized.current = true;
+
+        if (buttonContainerRef.current) {
+          window.google.accounts.id.renderButton(
+            buttonContainerRef.current,
+            {
+              type: "standard",
+              theme: "outline",
+              size: "large",
+              text: "continue_with",
+              shape: "rectangular",
+              width: buttonContainerRef.current.offsetWidth || 380,
+            }
+          );
+        }
+      }
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      if (document.head.contains(script)) {
+        document.head.removeChild(script);
+      }
+    };
+  }, [handleGoogleCredential]);
+
+  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+
+  if (!clientId) {
+    return null;
+  }
 
   return (
-    <Button
-      type="button"
-      variant="outline"
-      onClick={handleClick}
-      // TODO: re-enable once backend supports Google OAuth
-      disabled
-      className={cn(
-        "h-11 w-full border-primary/50 bg-surface text-foreground hover:bg-surface hover:border-primary",
-        className
+    <div className="flex flex-col items-center gap-2">
+      <div ref={buttonContainerRef} className="w-full" />
+      {!scriptLoaded && (
+        <Button
+          type="button"
+          variant="outline"
+          disabled
+          className={cn(
+            "h-11 w-full border-primary/50 bg-surface text-foreground hover:bg-surface hover:border-primary",
+            className
+          )}
+        >
+          {isLoading ? (
+            <Loader2 className="size-5 animate-spin text-primary" />
+          ) : (
+            <GoogleIcon />
+          )}
+          Continue with Google
+        </Button>
       )}
-    >
-      {isLoading ? (
-        <Loader2 className="size-5 animate-spin text-primary" />
-      ) : (
-        <GoogleIcon />
-      )}
-      Continue with Google
-    </Button>
+    </div>
   );
 }

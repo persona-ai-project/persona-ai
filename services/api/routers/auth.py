@@ -15,8 +15,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgre
 JWT_SECRET = os.getenv("JWT_SECRET", "persona-ai-local-jwt-secret-key-2024")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "72"))
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
-_engine = create_engine(DATABASE_URL)
+_engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 5}, pool_pre_ping=True)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -96,3 +97,79 @@ def login(request: LoginRequest):
 @router.post("/logout")
 def logout():
     return {"message": "Logged out successfully!"}
+
+
+class GoogleLoginRequest(BaseModel):
+    credential: str
+
+
+@router.post("/google")
+def google_login(request: GoogleLoginRequest):
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Google OAuth is not configured")
+
+    try:
+        from google.oauth2 import id_token
+        from google.auth.transport import requests as google_requests
+        idinfo = id_token.verify_oauth2_token(
+            request.credential,
+            google_requests.Request(),
+            GOOGLE_CLIENT_ID,
+        )
+    except ImportError:
+        raise HTTPException(status_code=500, detail="google-auth library not installed")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+
+    if idinfo.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+        raise HTTPException(status_code=401, detail="Invalid token issuer")
+
+    google_sub = idinfo["sub"]
+    email = idinfo["email"]
+    full_name = idinfo.get("name", "")
+    avatar_url = idinfo.get("picture", "")
+    email_verified = idinfo.get("email_verified", False)
+
+    if not email_verified:
+        raise HTTPException(status_code=401, detail="Google email not verified")
+
+    with _engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT id, email FROM users WHERE google_sub = :sub"),
+            {"sub": google_sub}
+        ).fetchone()
+
+        if not row:
+            row = conn.execute(
+                text("SELECT id, email FROM users WHERE email = :email"),
+                {"email": email}
+            ).fetchone()
+
+            if row:
+                user_id = str(row[0])
+                conn.execute(
+                    text("""UPDATE users SET google_sub = :sub, auth_provider = 'google',
+                             full_name = :name, avatar_url = :avatar
+                             WHERE id = :id"""),
+                    {"sub": google_sub, "name": full_name, "avatar": avatar_url, "id": user_id}
+                )
+                conn.commit()
+            else:
+                user_id = str(uuid.uuid4())
+                conn.execute(
+                    text("""INSERT INTO users (id, email, full_name, avatar_url, auth_provider, google_sub, created_at, is_active)
+                             VALUES (:id, :email, :name, :avatar, 'google', :sub, :now, true)"""),
+                    {"id": user_id, "email": email, "name": full_name,
+                     "avatar": avatar_url, "sub": google_sub, "now": datetime.now(timezone.utc)}
+                )
+                conn.commit()
+        else:
+            user_id = str(row[0])
+
+    token = _create_token(user_id, email)
+    return {
+        "user_id": user_id,
+        "email": email,
+        "access_token": token,
+        "message": "Google login successful!"
+    }

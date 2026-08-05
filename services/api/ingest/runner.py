@@ -15,11 +15,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Add paths for P1's modules
-AI_PATH = os.path.join(os.path.dirname(__file__), '..', 'services_ai')
-ROOT_PATH = os.path.join(os.path.dirname(__file__), '..', '..', '..')
-sys.path.insert(0, AI_PATH)
+# Add paths for shared modules
+ROOT_PATH = os.path.join(os.path.dirname(__file__), '..', '..')
+AI_PATH = os.path.join(ROOT_PATH, 'services', 'ai')
 sys.path.insert(0, ROOT_PATH)
+sys.path.insert(0, AI_PATH)
 
 from shared.contracts.chunk import Chunk
 
@@ -68,7 +68,7 @@ def _parse_file(file_path: str, source_type: str) -> str:
             actual_path, owner_name = file_path.split("::", 1)
         else:
             actual_path, owner_name = file_path, "unknown"
-        from parsers.whatsapp import parse_whatsapp
+        from services.ai.parsers.whatsapp import parse_whatsapp
         chunks = parse_whatsapp(actual_path, owner_name=owner_name)
         return "\n\n".join(c.text for c in chunks)
 
@@ -139,8 +139,7 @@ def run_ingestion_job(job_id, user_id, file_path, source_type, db_url="postgresq
         ]
 
         _update_status(db, job_id, JobStatus.EMBEDDING)
-        sys.path.insert(0, "/app/services_ai")
-        from rag.retriever import index as rag_index
+        from services.ai.rag.retriever import index as rag_index
         rag_index(user_id=str(user_id), chunks=chunks)
 
         _update_status(db, job_id, JobStatus.INDEXED)

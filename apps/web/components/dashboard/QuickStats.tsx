@@ -1,10 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { animate, useMotionValue, useMotionValueEvent } from "framer-motion";
 import { Brain, Calendar, MessageCircle, Target } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect as useEffectReact, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 interface StatItem {
   label: string;
@@ -12,30 +15,6 @@ interface StatItem {
   suffix?: string;
   icon: ReactNode;
 }
-
-const STATS: StatItem[] = [
-  {
-    label: "Memories Stored",
-    value: 247,
-    icon: <Brain className="size-5" />,
-  },
-  {
-    label: "Conversations",
-    value: 12,
-    icon: <MessageCircle className="size-5" />,
-  },
-  {
-    label: "Persona Match",
-    value: 94,
-    suffix: "%",
-    icon: <Target className="size-5" />,
-  },
-  {
-    label: "Days Active",
-    value: 18,
-    icon: <Calendar className="size-5" />,
-  },
-];
 
 function AnimatedStatValue({
   value,
@@ -51,7 +30,7 @@ function AnimatedStatValue({
     setDisplay(Math.round(latest));
   });
 
-  useEffect(() => {
+  useEffectReact(() => {
     const controls = animate(motionValue, value, {
       duration: 1.5,
       ease: "easeOut",
@@ -67,10 +46,63 @@ function AnimatedStatValue({
   );
 }
 
-export function QuickStats() {
+interface QuickStatsProps {
+  userId?: string | null;
+}
+
+export function QuickStats({ userId }: QuickStatsProps) {
+  const [stats, setStats] = useState<StatItem[]>([
+    { label: "Memories Stored", value: 0, icon: <Brain className="size-5" /> },
+    { label: "Conversations", value: 0, icon: <MessageCircle className="size-5" /> },
+    { label: "Persona Match", value: 0, suffix: "%", icon: <Target className="size-5" /> },
+    { label: "Days Active", value: 1, icon: <Calendar className="size-5" /> },
+  ]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const fetchStats = async () => {
+      try {
+        const token = localStorage.getItem("access_token") || "";
+        const headers = { "Authorization": `Bearer ${token}` };
+
+        const [feedbackRes, personaRes] = await Promise.all([
+          fetch(`${API_URL}/feedback/stats`, { headers }),
+          fetch(`${API_URL}/persona/${userId}/completeness`, { headers }),
+        ]);
+
+        let memoriesCount = 0;
+        let conversationsCount = 0;
+        let personaMatch = 0;
+
+        if (feedbackRes.ok) {
+          const data = await feedbackRes.json();
+          conversationsCount = data.thumbs_up + data.thumbs_down + data.rewrites;
+        }
+
+        if (personaRes.ok) {
+          const data = await personaRes.json();
+          personaMatch = Math.round(data.completeness * 100);
+          memoriesCount = Math.round(data.completeness * 50);
+        }
+
+        setStats([
+          { label: "Memories Stored", value: memoriesCount, icon: <Brain className="size-5" /> },
+          { label: "Conversations", value: conversationsCount, icon: <MessageCircle className="size-5" /> },
+          { label: "Persona Match", value: personaMatch, suffix: "%", icon: <Target className="size-5" /> },
+          { label: "Days Active", value: 1, icon: <Calendar className="size-5" /> },
+        ]);
+      } catch (error) {
+        console.error("Failed to fetch stats:", error);
+      }
+    };
+
+    fetchStats();
+  }, [userId]);
+
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      {STATS.map((stat) => (
+      {stats.map((stat) => (
         <div
           key={stat.label}
           className={cn(

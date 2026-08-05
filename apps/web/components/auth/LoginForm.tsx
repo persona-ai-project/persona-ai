@@ -86,7 +86,21 @@ export function LoginForm() {
 
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("user_id", data.user_id);
-      router.push("/dashboard");
+
+      const personaRes = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/persona/${data.user_id}`,
+        {
+          headers: { Authorization: `Bearer ${data.access_token}` },
+        }
+      );
+      const persona = await personaRes.json();
+      const isEmpty =
+        !persona?.traits?.length &&
+        !persona?.communication_style &&
+        !persona?.identity?.name;
+
+      toast.success("Logged in successfully!");
+      router.push(isEmpty ? "/onboarding" : "/dashboard");
     } catch (error) {
       setIsSubmitting(false);
       toast.error(

@@ -1,18 +1,22 @@
 import { Badge } from "@/components/ui/badge";
 
-const TRAITS = [
+const DEFAULT_TRAITS: string[] = [
   "Analytical",
   "Goal-Driven",
   "Tech-First",
-  "Founder Mindset",
-  "Fast Learner",
   "Problem Solver",
-] as const;
+];
 
-export function TraitBadges() {
+interface TraitBadgesProps {
+  traits?: string[];
+}
+
+export function TraitBadges({ traits = DEFAULT_TRAITS }: TraitBadgesProps) {
+  const displayTraits = traits.length > 0 ? traits : DEFAULT_TRAITS;
+
   return (
     <div className="flex flex-wrap justify-center gap-2">
-      {TRAITS.map((trait) => (
+      {displayTraits.map((trait) => (
         <Badge
           key={trait}
           variant="default"

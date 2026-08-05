@@ -1,21 +1,27 @@
-from fastapi import APIRouter, HTTPException
+import os
+import uuid
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy import create_engine, text
 from core.security import get_current_user
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/persona")
+_engine = create_engine(DATABASE_URL)
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
-
-# In-memory store for demo (real project mein database hoga)
-feedback_store = []
-preference_pairs = []
 
 
 class FeedbackRequest(BaseModel):
     user_id: str
+    message_id: str | None = None
     message: str
     twin_response: str
-    kind: str  # "thumbs_up", "thumbs_down", "rewrite"
+    kind: str  # "thumbs_up", "thumbs_down", "rewrite", "side_by_side"
     rewrite: str | None = None
 
 
@@ -26,37 +32,41 @@ class FeedbackResponse(BaseModel):
 
 @router.post("", response_model=FeedbackResponse)
 def submit_feedback(request: FeedbackRequest, current_user: dict = Depends(get_current_user)):
-    """
-    Submit feedback on twin response.
-    On rewrite: creates a preference pair for DPO training.
-    """
     try:
-        # Save feedback
-        feedback_store.append({
-            "user_id": request.user_id,
-            "message": request.message,
-            "twin_response": request.twin_response,
-            "kind": request.kind,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
+        with _engine.connect() as conn:
+            conn.execute(
+                text("""INSERT INTO feedback (id, user_id, message_id, rating, comment, created_at)
+                         VALUES (:id, :user_id, :message_id, :rating, :comment, :now)"""),
+                {
+                    "id": str(uuid.uuid4()),
+                    "user_id": request.user_id,
+                    "message_id": request.message_id,
+                    "rating": 1 if request.kind == "thumbs_up" else (-1 if request.kind == "thumbs_down" else 0),
+                    "comment": request.rewrite if request.kind == "rewrite" else request.kind,
+                    "now": datetime.now(timezone.utc),
+                }
+            )
 
-        pair_created = False
+            pair_created = False
 
-        # If rewrite — create preference pair
-        if request.kind == "rewrite" and request.rewrite:
-            preference_pairs.append({
-                "user_id": request.user_id,
-                "prompt": request.message,
-                "chosen": request.rewrite,
-                "rejected": request.twin_response,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            })
-            pair_created = True
+            if request.kind == "rewrite" and request.rewrite:
+                conn.execute(
+                    text("""INSERT INTO preference_pairs (id, user_id, prompt, chosen, rejected, created_at)
+                             VALUES (:id, :user_id, :prompt, :chosen, :rejected, :now)"""),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "user_id": request.user_id,
+                        "prompt": request.message,
+                        "chosen": request.rewrite,
+                        "rejected": request.twin_response,
+                        "now": datetime.now(timezone.utc),
+                    }
+                )
+                pair_created = True
 
-        return FeedbackResponse(
-            status="ok",
-            preference_pair_created=pair_created
-        )
+            conn.commit()
+
+        return FeedbackResponse(status="ok", preference_pair_created=pair_created)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -64,17 +74,38 @@ def submit_feedback(request: FeedbackRequest, current_user: dict = Depends(get_c
 
 @router.get("/stats")
 def get_feedback_stats(current_user: dict = Depends(get_current_user)):
-    """
-    Get feedback statistics — shown on dashboard.
-    """
-    thumbs_up = sum(1 for f in feedback_store if f["kind"] == "thumbs_up")
-    thumbs_down = sum(1 for f in feedback_store if f["kind"] == "thumbs_down")
-    rewrites = sum(1 for f in feedback_store if f["kind"] == "rewrite")
+    try:
+        with _engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT rating, COUNT(*) FROM feedback WHERE user_id = :uid GROUP BY rating"),
+                {"uid": current_user["user_id"]}
+            ).fetchall()
 
-    return {
-        "thumbs_up": thumbs_up,
-        "thumbs_down": thumbs_down,
-        "rewrites": rewrites,
-        "preference_pairs": len(preference_pairs),
-        "pairs": preference_pairs  # show actual pairs for demo
-    }
+            counts = {r[0]: r[1] for r in rows}
+            thumbs_up = counts.get(1, 0)
+            thumbs_down = counts.get(-1, 0)
+
+            rewrites = conn.execute(
+                text("SELECT COUNT(*) FROM feedback WHERE user_id = :uid AND comment IS NOT NULL AND rating = 0"),
+                {"uid": current_user["user_id"]}
+            ).scalar() or 0
+
+            pairs_count = conn.execute(
+                text("SELECT COUNT(*) FROM preference_pairs WHERE user_id = :uid"),
+                {"uid": current_user["user_id"]}
+            ).scalar() or 0
+
+            pairs = conn.execute(
+                text("SELECT prompt, chosen, rejected, created_at FROM preference_pairs WHERE user_id = :uid ORDER BY created_at DESC LIMIT 10"),
+                {"uid": current_user["user_id"]}
+            ).fetchall()
+
+        return {
+            "thumbs_up": thumbs_up,
+            "thumbs_down": thumbs_down,
+            "rewrites": rewrites,
+            "preference_pairs": pairs_count,
+            "pairs": [{"prompt": p[0], "chosen": p[1], "rejected": p[2], "created_at": str(p[3])} for p in pairs]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

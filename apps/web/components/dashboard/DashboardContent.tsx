@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -10,31 +11,64 @@ import { QuickStats } from "@/components/dashboard/QuickStats";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/chat", label: "Chat" },
   { href: "/onboarding", label: "Onboarding" },
 ] as const;
 
-const INSIGHTS = [
-  {
-    title: "Communication Style",
-    description:
-      "Direct and data-driven. You prefer structured information.",
-  },
-  {
-    title: "Learning Pattern",
-    description:
-      "Visual learner who connects concepts to real-world applications.",
-  },
-  {
-    title: "Work Style",
-    description: "Systems thinker who focuses on leverage and scale.",
-  },
-] as const;
-
 export function DashboardContent() {
   const pathname = usePathname();
+  const [persona, setPersona] = useState<any>(null);
+  const [completeness, setCompleteness] = useState(0);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const storedUserId = localStorage.getItem("user_id");
+    if (storedUserId) {
+      setUserId(storedUserId);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const fetchData = async () => {
+      try {
+        const token = localStorage.getItem("access_token") || "";
+        const headers = { "Authorization": `Bearer ${token}` };
+
+        const [personaRes, completenessRes] = await Promise.all([
+          fetch(`${API_URL}/persona/${userId}`, { headers }),
+          fetch(`${API_URL}/persona/${userId}/completeness`, { headers }),
+        ]);
+
+        if (personaRes.ok) {
+          const data = await personaRes.json();
+          setPersona(data);
+        }
+
+        if (completenessRes.ok) {
+          const data = await completenessRes.json();
+          setCompleteness(data.completeness * 100);
+        }
+      } catch (error) {
+        console.error("Failed to fetch dashboard data:", error);
+      }
+    };
+
+    fetchData();
+  }, [userId]);
+
+  const displayName = persona?.name || "Your AI Twin";
+  const initials = displayName
+    .split(" ")
+    .map((n: string) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 
   return (
     <div className="min-h-dvh bg-background">
@@ -54,11 +88,11 @@ export function DashboardContent() {
           <div className="flex items-center gap-2 sm:gap-3">
             <Avatar size="sm">
               <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
-                F
+                {initials || "U"}
               </AvatarFallback>
             </Avatar>
             <span className="hidden text-sm font-medium text-white sm:inline">
-              Faizan Afzal
+              {displayName}
             </span>
           </div>
         </div>
@@ -90,34 +124,61 @@ export function DashboardContent() {
         transition={{ duration: 0.5, ease: "easeOut" }}
         className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8"
       >
-        <QuickStats />
+        <QuickStats userId={userId} />
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <PersonaCard />
-          <ActivityFeed />
+          <PersonaCard persona={persona} completeness={completeness} />
+          <ActivityFeed userId={userId} />
         </div>
 
-        <section>
-          <h2 className="mb-4 text-lg font-semibold text-white">
-            Persona Insights
-          </h2>
-          <div className="grid gap-4 md:grid-cols-3">
-            {INSIGHTS.map((insight, index) => (
-              <motion.div
-                key={insight.title}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 + index * 0.1, duration: 0.4 }}
-                className="rounded-xl border-l-4 border-l-primary bg-surface p-5 ring-1 ring-foreground/10 transition-colors hover:ring-primary/30"
-              >
-                <h3 className="mb-2 font-medium text-white">{insight.title}</h3>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  {insight.description}
-                </p>
-              </motion.div>
-            ))}
-          </div>
-        </section>
+        {persona && (
+          <section>
+            <h2 className="mb-4 text-lg font-semibold text-white">
+              Persona Insights
+            </h2>
+            <div className="grid gap-4 md:grid-cols-3">
+              {persona.personality && (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4, duration: 0.4 }}
+                  className="rounded-xl border-l-4 border-l-primary bg-surface p-5 ring-1 ring-foreground/10 transition-colors hover:ring-primary/30"
+                >
+                  <h3 className="mb-2 font-medium text-white">Communication Style</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {persona.personality}
+                  </p>
+                </motion.div>
+              )}
+              {persona.profession && (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5, duration: 0.4 }}
+                  className="rounded-xl border-l-4 border-l-primary bg-surface p-5 ring-1 ring-foreground/10 transition-colors hover:ring-primary/30"
+                >
+                  <h3 className="mb-2 font-medium text-white">Professional Focus</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {persona.profession}
+                  </p>
+                </motion.div>
+              )}
+              {persona.background && (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.6, duration: 0.4 }}
+                  className="rounded-xl border-l-4 border-l-primary bg-surface p-5 ring-1 ring-foreground/10 transition-colors hover:ring-primary/30"
+                >
+                  <h3 className="mb-2 font-medium text-white">Background</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {persona.background}
+                  </p>
+                </motion.div>
+              )}
+            </div>
+          </section>
+        )}
       </motion.main>
     </div>
   );

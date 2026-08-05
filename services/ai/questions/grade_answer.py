@@ -1,78 +1,72 @@
 import os
+import json
+import re
 from pathlib import Path
 from dotenv import load_dotenv
-from google import genai
 
-# Load environment variables
 load_dotenv(Path(__file__).resolve().parents[1] / "rag" / ".env")
 
-# Configure Gemini
-client_gemini = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+NON_SUBSTANTIVE = re.compile(
+    r"^(idk|i don'?t know|skip|nothing|nah|no|n/a|none|ok|okay|whatever|idc|lol|haha|yes|no|sure|maybe|yep|nope|fine|good|bad|cool|nice|great|ok|same)\s*[!.]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _simple_grade(question: str, answer: str) -> dict:
+    """Fallback grading when no LLM is available."""
+    clean = answer.strip().lower()
+    if len(clean) < 2 or NON_SUBSTANTIVE.match(clean):
+        return {"substantive": False, "reason": "Answer too short or non-substantive"}
+    if len(clean.split()) < 2 and not any(c.isdigit() for c in clean):
+        return {"substantive": False, "reason": "Single word answer, needs more detail"}
+    return {"substantive": True, "reason": "Answer contains useful information"}
 
 
 def grade_answer(question: str, answer: str) -> dict:
     """
     LLM judge that evaluates whether a user's answer is substantive.
-    Catches non-answers like 'idk', 'skip', or off-topic responses.
-
-    Args:
-        question: The interview question that was asked
-        answer: The user's response
-
-    Returns:
-        Dictionary with 'substantive' (bool) and 'reason' (str)
+    Falls back to simple keyword-based grading if no LLM is available.
     """
-    prompt = f"""
-    You are evaluating whether a user's answer to an interview question is useful.
+    try:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return _simple_grade(question, answer)
 
-    Question: {question}
-    Answer: {answer}
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.0-flash")
 
-    Is this answer substantive and useful for building a personal profile?
+        prompt = f"""
+        You are evaluating whether a user's answer to an interview question is useful.
 
-    Rules:
-    - "idk", "skip", "nothing", "I don't know", "n/a" = NOT substantive
-    - Very short answers under 2 words = NOT substantive
-    - Single proper nouns as location answers ARE substantive (e.g. "Lahore", "London")
-    - Off-topic answers = NOT substantive
-    - Any real, genuine answer = substantive
+        Question: {question}
+        Answer: {answer}
 
-    Respond in this exact JSON format:
-    {{"substantive": true/false, "reason": "one sentence explanation"}}
+        Is this answer substantive and useful for building a personal profile?
 
-    Return ONLY the JSON, nothing else.
-    """
+        Rules:
+        - "idk", "skip", "nothing", "I don't know", "n/a" = NOT substantive
+        - Very short answers under 2 words = NOT substantive
+        - Single proper nouns as location answers ARE substantive (e.g. "Lahore", "London")
+        - Off-topic answers = NOT substantive
+        - Any real, genuine answer = substantive
 
-    response = client_gemini.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
+        Respond in this exact JSON format:
+        {{"substantive": true/false, "reason": "one sentence explanation"}}
 
-    # Parse JSON response
-    import json
-    text = response.text.strip()
-    # Remove markdown code blocks if present
-    text = text.replace("```json", "").replace("```", "").strip()
-    result = json.loads(text)
+        Return ONLY the JSON, nothing else.
+        """
 
-    return {
-        "substantive": result["substantive"],
-        "reason": result["reason"]
-    }
+        response = model.generate_content(prompt)
 
-# Quick test
-# if __name__ == "__main__":
-#     tests = [
-#         ("What do you do for work?", "I am a software engineer at a startup"),
-#         ("What do you do for work?", "idk"),
-#         ("What are your hobbies?", "skip"),
-#         ("Where do you live?", "Lahore"),
-#         ("What are your goals?", "I want to start my own company someday"),
-#     ]
-#
-#     for question, answer in tests:
-#         result = grade_answer(question, answer)
-#         status = "✅" if result["substantive"] else "❌"
-#         print(f"{status} Q: {question}")
-#         print(f"   A: {answer}")
-#         print(f"   Reason: {result['reason']}\n")
+        text = response.text.strip()
+        text = text.replace("```json", "").replace("```", "").strip()
+        result = json.loads(text)
+
+        return {
+            "substantive": result["substantive"],
+            "reason": result["reason"]
+        }
+    except Exception as e:
+        print(f"[grade_answer] LLM fallback triggered: {e}")
+        return _simple_grade(question, answer)

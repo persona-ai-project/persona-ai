@@ -25,7 +25,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 # Path setup
-ROOT_PATH = os.path.join(os.path.dirname(__file__), '..', '..', '..')
+ROOT_PATH = os.path.join(os.path.dirname(__file__), '..', '..')
 AI_PATH   = os.path.join(ROOT_PATH, 'services', 'ai')
 sys.path.insert(0, ROOT_PATH)
 sys.path.insert(0, AI_PATH)
@@ -342,8 +342,7 @@ def delete_source(source_id: str, user_id: str):
     """
     # Delete from Qdrant first (P1's retriever)
     try:
-        sys.path.insert(0, "/app/services_ai")
-        from rag.retriever import delete as rag_delete
+        from services.ai.rag.retriever import delete as rag_delete
         rag_delete(user_id=user_id, source=source_id)
         print(f"[ingest] Deleted chunks from Qdrant for source: {source_id}")
     except Exception as e:

@@ -1,18 +1,22 @@
 import os
+import uuid
+import jwt
+import bcrypt
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from pathlib import Path
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
 
-# Load env
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-# Supabase client
-from supabase import create_client
-supabase = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_ANON_KEY")
-)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/persona")
+JWT_SECRET = os.getenv("JWT_SECRET", "persona-ai-local-jwt-secret-key-2024")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "72"))
+
+_engine = create_engine(DATABASE_URL)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -27,46 +31,68 @@ class LoginRequest(BaseModel):
     password: str
 
 
+def _create_token(user_id: str, email: str) -> str:
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRY_HOURS),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
 @router.post("/signup")
 def signup(request: SignUpRequest):
-    """Register a new user via Supabase Auth."""
-    try:
-        response = supabase.auth.sign_up({
-            "email": request.email,
-            "password": request.password
-        })
-        return {
-            "user_id": response.user.id,
-            "email": response.user.email,
-            "message": "Signup successful!"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    with _engine.connect() as conn:
+        existing = conn.execute(
+            text("SELECT id FROM users WHERE email = :email"),
+            {"email": request.email}
+        ).fetchone()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already registered")
+
+        user_id = str(uuid.uuid4())
+        password_hash = bcrypt.hashpw(request.password.encode(), bcrypt.gensalt()).decode()
+        conn.execute(
+            text("INSERT INTO users (id, email, password_hash, created_at, is_active) VALUES (:id, :email, :pw, :now, true)"),
+            {"id": user_id, "email": request.email, "pw": password_hash, "now": datetime.now(timezone.utc)}
+        )
+        conn.commit()
+
+    token = _create_token(user_id, request.email)
+    return {
+        "user_id": user_id,
+        "email": request.email,
+        "access_token": token,
+        "message": "Signup successful!"
+    }
 
 
 @router.post("/login")
 def login(request: LoginRequest):
-    """Login user via Supabase Auth."""
-    try:
-        response = supabase.auth.sign_in_with_password({
-            "email": request.email,
-            "password": request.password
-        })
-        return {
-            "user_id": response.user.id,
-            "email": response.user.email,
-            "access_token": response.session.access_token,
-            "message": "Login successful!"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    with _engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT id, email, password_hash FROM users WHERE email = :email"),
+            {"email": request.email}
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=400, detail="Invalid email or password")
+
+    user_id, email, password_hash = row
+    user_id = str(user_id)
+    if not password_hash or not bcrypt.checkpw(request.password.encode(), password_hash.encode()):
+        raise HTTPException(status_code=400, detail="Invalid email or password")
+
+    token = _create_token(user_id, email)
+    return {
+        "user_id": user_id,
+        "email": email,
+        "access_token": token,
+        "message": "Login successful!"
+    }
 
 
 @router.post("/logout")
-def logout(token: str):
-    """Logout user."""
-    try:
-        supabase.auth.sign_out()
-        return {"message": "Logged out successfully!"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+def logout():
+    return {"message": "Logged out successfully!"}

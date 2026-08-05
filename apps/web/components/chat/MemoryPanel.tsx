@@ -5,34 +5,26 @@ import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-const MOCK_MEMORIES = [
-  {
-    id: "1",
-    text: "User is a CS student at COMSATS pursuing software engineering with a focus on AI.",
-    relevance: "94% match",
-  },
-  {
-    id: "2",
-    text: "Top strengths include analytical thinking, goal orientation, and technical expertise.",
-    relevance: "91% match",
-  },
-  {
-    id: "3",
-    text: "Career goal is to build AI-powered products that solve real-world problems.",
-    relevance: "87% match",
-  },
-  {
-    id: "4",
-    text: "Prefers structured learning paths and values mentorship in professional growth.",
-    relevance: "82% match",
-  },
-] as const;
+interface Memory {
+  id: string;
+  text: string;
+  relevance: string;
+}
 
 interface MemoryPanelProps {
   className?: string;
+  memories?: Memory[];
 }
 
-export function MemoryPanel({ className }: MemoryPanelProps) {
+const DEFAULT_MEMORIES: Memory[] = [
+  {
+    id: "1",
+    text: "Start chatting to build your AI twin's memory...",
+    relevance: "system",
+  },
+];
+
+export function MemoryPanel({ className, memories = DEFAULT_MEMORIES }: MemoryPanelProps) {
   return (
     <aside
       className={cn(
@@ -42,7 +34,7 @@ export function MemoryPanel({ className }: MemoryPanelProps) {
     >
       <div className="shrink-0 border-b border-border px-4 py-4">
         <h2 className="text-sm font-semibold text-foreground">
-          What I Remember 🧠
+          What I Remember
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
           Relevant context from your profile
@@ -51,7 +43,7 @@ export function MemoryPanel({ className }: MemoryPanelProps) {
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="flex flex-col gap-3">
-          {MOCK_MEMORIES.map((memory, index) => (
+          {memories.map((memory, index) => (
             <motion.div
               key={memory.id}
               initial={{ opacity: 0, x: 12 }}

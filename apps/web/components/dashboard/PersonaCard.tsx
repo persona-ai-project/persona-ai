@@ -7,7 +7,16 @@ import { CompletenessRing } from "@/components/dashboard/CompletenessRing";
 import { TraitBadges } from "@/components/dashboard/TraitBadges";
 import { Button } from "@/components/ui/button";
 
-export function PersonaCard() {
+interface PersonaCardProps {
+  persona?: any;
+  completeness?: number;
+}
+
+export function PersonaCard({ persona, completeness = 0 }: PersonaCardProps) {
+  const name = persona?.name || "Your AI Twin";
+  const profession = persona?.profession || "CS Student & AI Builder";
+  const traits = persona?.hobbies || [];
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -18,16 +27,16 @@ export function PersonaCard() {
       <div className="mb-6 text-center">
         <h2 className="text-xl font-semibold text-white">Your AI Twin</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Faizan Afzal • CS Student &amp; AI Builder
+          {name} {profession && `\u2022 ${profession}`}
         </p>
       </div>
 
       <div className="mb-6 flex justify-center">
-        <CompletenessRing percentage={73} />
+        <CompletenessRing percentage={completeness} />
       </div>
 
       <div className="mb-8">
-        <TraitBadges />
+        <TraitBadges traits={traits} />
       </div>
 
       <div className="mt-auto">

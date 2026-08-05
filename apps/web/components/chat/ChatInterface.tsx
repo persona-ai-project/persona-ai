@@ -14,8 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-const MOCK_RESPONSE =
-  "That's a great question! Based on what I know about you, I can provide personalized insights that help you grow both professionally and personally.";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
@@ -29,20 +28,7 @@ const INITIAL_MESSAGES: ChatMessage[] = [
     role: "ai",
     content:
       "Hello! I'm your PersonaAI twin. I've learned from your onboarding. Ask me anything.",
-    timestamp: new Date("2026-06-06T10:00:00"),
-  },
-  {
-    id: "init-2",
-    role: "user",
-    content: "What are my top strengths?",
-    timestamp: new Date("2026-06-06T10:01:00"),
-  },
-  {
-    id: "init-3",
-    role: "ai",
-    content:
-      "Based on your profile, your top strengths are analytical thinking, goal orientation, and technical expertise.",
-    timestamp: new Date("2026-06-06T10:01:30"),
+    timestamp: new Date(),
   },
 ];
 
@@ -85,7 +71,17 @@ export function ChatInterface() {
   const [isTyping, setIsTyping] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [showMemoryPanel, setShowMemoryPanel] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [memories, setMemories] = useState<Array<{id: string; text: string; relevance: string}>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Get user ID from localStorage on mount
+  useEffect(() => {
+    const storedUserId = localStorage.getItem("user_id");
+    if (storedUserId) {
+      setUserId(storedUserId);
+    }
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -95,8 +91,9 @@ export function ChatInterface() {
     scrollToBottom();
   }, [messages, isTyping, scrollToBottom]);
 
-  const streamResponse = useCallback(async () => {
-    const words = MOCK_RESPONSE.split(" ");
+  const streamResponse = useCallback(async (userMessage: string) => {
+    if (!userId) return;
+
     const aiId = `ai-${Date.now()}`;
     const timestamp = new Date();
 
@@ -105,18 +102,84 @@ export function ChatInterface() {
       { id: aiId, role: "ai", content: "", timestamp },
     ]);
 
-    let currentContent = "";
-    for (let i = 0; i < words.length; i++) {
-      currentContent += (i === 0 ? "" : " ") + words[i];
-      const content = currentContent;
+    try {
+      const response = await fetch(`${API_URL}/chat/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("access_token") || ""}`,
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          message: userMessage,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Chat request failed");
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) return;
+
+      let currentContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === "token" && data.content) {
+                currentContent += data.content;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiId ? { ...m, content: currentContent } : m
+                  )
+                );
+              }
+              if (data.type === "chunks" && data.chunks) {
+                setMemories(data.chunks.map((c: { text: string; score: number }, i: number) => ({
+                  id: `rag-${i}`,
+                  text: c.text,
+                  relevance: `score: ${c.score}`,
+                })));
+              }
+              if (data.type === "done") break;
+              if (data.type === "error") {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiId
+                      ? { ...m, content: `Error: ${data.content}` }
+                      : m
+                  )
+                );
+              }
+            } catch {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    } catch (error) {
       setMessages((prev) =>
-        prev.map((m) => (m.id === aiId ? { ...m, content } : m))
+        prev.map((m) =>
+          m.id === aiId
+            ? { ...m, content: "Sorry, I encountered an error. Please try again." }
+            : m
+        )
       );
-      await new Promise((resolve) => setTimeout(resolve, 30));
     }
 
     setIsStreaming(false);
-  }, []);
+  }, [userId]);
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
@@ -134,10 +197,11 @@ export function ChatInterface() {
     setIsTyping(true);
     setIsStreaming(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    setMemories([]);
 
+    await new Promise((resolve) => setTimeout(resolve, 500));
     setIsTyping(false);
-    await streamResponse();
+    await streamResponse(trimmed);
   }, [input, isTyping, isStreaming, streamResponse]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -160,7 +224,7 @@ export function ChatInterface() {
           </Link>
 
           <h1 className="absolute left-1/2 hidden -translate-x-1/2 text-sm font-medium text-foreground sm:block sm:text-base">
-            Faizan&apos;s Twin
+            Your AI Twin
           </h1>
 
           <div className="flex items-center gap-2">
@@ -176,7 +240,7 @@ export function ChatInterface() {
             </Button>
             <Avatar size="sm">
               <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
-                F
+                U
               </AvatarFallback>
             </Avatar>
           </div>
@@ -210,7 +274,7 @@ export function ChatInterface() {
           <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
               {messages.map((message) => (
-                <ChatBubble key={message.id} message={message} />
+                <ChatBubble key={message.id} message={message} userId={userId} />
               ))}
 
               <AnimatePresence>
@@ -248,7 +312,7 @@ export function ChatInterface() {
 
         {/* Memory panel — 25% (desktop) */}
         <div className="hidden min-w-0 flex-1 lg:flex">
-          <MemoryPanel className="w-full" />
+          <MemoryPanel className="w-full" memories={memories} />
         </div>
 
         {/* Memory panel — mobile overlay */}
@@ -269,7 +333,7 @@ export function ChatInterface() {
                 transition={{ type: "spring", damping: 28, stiffness: 300 }}
                 className="absolute inset-y-0 right-0 z-30 w-[85%] max-w-sm lg:hidden"
               >
-                <MemoryPanel className="h-full shadow-xl" />
+                <MemoryPanel className="h-full shadow-xl" memories={memories} />
               </motion.div>
             </>
           )}

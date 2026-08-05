@@ -138,8 +138,10 @@ export function SignUpForm() {
         );
       }
 
-      toast.success("Account created! Please log in.");
-      router.push("/login");
+      localStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("user_id", data.user_id);
+      toast.success("Account created! Let's build your persona.");
+      router.push("/onboarding");
     } catch (error) {
       setIsSubmitting(false);
       toast.error(

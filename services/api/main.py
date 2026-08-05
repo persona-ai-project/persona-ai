@@ -1,9 +1,10 @@
 import os
 import subprocess
+import time
 import uvicorn
 import uuid
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, text
@@ -20,6 +21,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Langfuse tracing
+_langfuse = None
+try:
+    from langfuse import Langfuse
+    _langfuse = Langfuse(
+        public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
+        secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
+        host=os.getenv("LANGFUSE_HOST", "http://langfuse:3000"),
+    )
+    print("Langfuse initialized.")
+except Exception as e:
+    print(f"Langfuse init warning: {e}")
+
+
+@app.middleware("http")
+async def langfuse_tracing(request: Request, call_next):
+    if not _langfuse or request.url.path in ("/healthz", "/ping", "/docs", "/openapi.json"):
+        return await call_next(request)
+
+    start_time = time.time()
+    trace_id = str(uuid.uuid4())
+
+    trace = _langfuse.trace(
+        id=trace_id,
+        name=f"{request.method} {request.url.path}",
+        metadata={"method": request.method, "path": request.url.path},
+    )
+
+    response = await call_next(request)
+
+    duration_ms = (time.time() - start_time) * 1000
+    trace.span(
+        name="request",
+        input={"method": request.method, "path": request.url.path},
+        output={"status": response.status_code},
+        metadata={"duration_ms": round(duration_ms, 2)},
+    )
+    trace.update(metadata={"status_code": response.status_code, "duration_ms": round(duration_ms, 2)})
+
+    return response
+
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -28,21 +70,34 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+from storage.client import get_presigned_url, upload_bytes, R2_INGEST_BUCKET
+from ingest.runner import create_job, JobStatus
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://postgres:postgres@postgres:5432/persona"
 )
 
+# Shared engine for health checks
+_engine = None
+
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        _engine = create_engine(DATABASE_URL)
+    return _engine
+
+
 # Register routers
 from routers.ingest import router as ingest_router
 from routers.voice import router as voice_router
 from routers.chat import router as chat_router
-# from routers.questions import router as questions_router
+from routers.questions import router as questions_router
 from routers.feedback import router as feedback_router
 
 app.include_router(chat_router)
-# app.include_router(questions_router)
+app.include_router(questions_router)
 app.include_router(feedback_router)
 app.include_router(ingest_router)
 app.include_router(voice_router)
@@ -63,14 +118,13 @@ def health_check():
 
     # DB ping
     try:
-        engine = create_engine(DATABASE_URL)
+        engine = get_engine()
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         db_ok = True
     except Exception:
         db_ok = False
 
-    # Qdrant ping
     try:
         from qdrant_client import QdrantClient
         qc = QdrantClient(
@@ -137,8 +191,22 @@ def run_migrations():
     print("Migrations complete.")
 
 
+@app.on_event("startup")
+def startup_event():
+    try:
+        run_migrations()
+    except Exception as e:
+        print(f"Migration warning: {e}")
+
+    try:
+        from services.ai.rag.retriever import ensure_collection
+        ensure_collection()
+        print("Qdrant collection ensured.")
+    except Exception as e:
+        print(f"Qdrant collection warning: {e}")
+
+
 if __name__ == "__main__":
-   # run_migrations()
     reload = os.getenv("RELOAD", "false").lower() == "true"
     uvicorn.run(
         "main:app",

@@ -1,6 +1,6 @@
 # Persona AI
 
-AI-powered persona platform. Clone → configure → run.
+AI-powered persona platform. Clone -> configure -> run.
 
 ---
 
@@ -92,7 +92,7 @@ docker compose ps
 All services should show `Up` or `healthy`.
 
 ### 7. Verify API
-Open http://localhost:8001/healthz → should return `{"status":"ok"}`
+Open http://localhost:8001/healthz -> should return `{"status":"ok"}`
 
 ---
 
@@ -103,11 +103,12 @@ Open http://localhost:8001/healthz → should return `{"status":"ok"}`
 | API (FastAPI) | http://localhost:8001 | Backend API + swagger at /docs |
 | Web (Next.js) | http://localhost:3002 | Frontend app |
 | Langfuse | http://localhost:3001 | AI observability dashboard |
-| MinIO | http://localhost:9001 | File storage console |
+| MinIO Console | http://localhost:9091 | File storage console |
+| MinIO API | http://localhost:9092 | File storage API |
 | Qdrant | http://localhost:6333/dashboard | Vector DB dashboard |
 | Postgres | localhost:5432 | Primary database |
 | Redis | localhost:6379 | Cache and queues |
-| ClickHouse | localhost:8123 | Analytics DB |
+| ClickHouse | localhost:18123 | Analytics DB (mapped from 8123) |
 
 ### Service credentials (local only)
 | Service | User | Password | DB |
@@ -124,14 +125,17 @@ Copy `.env.example` to `.env` and fill in:
 
 | Variable | Description |
 |---|---|
-| `DATABASE_URL` | Postgres connection string |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anonymous key |
+| `GROQ_API_KEY` | Groq API key (required for chat + STT) |
+| `GEMINI_API_KEY` | Google Gemini API key (required for questions + LLM fallback) |
+| `QDRANT_URL` | Qdrant URL (default: http://qdrant:6333) |
+| `QDRANT_API_KEY` | Qdrant API key (optional) |
 | `R2_ENDPOINT` | Cloudflare R2 endpoint URL |
 | `R2_ACCESS_KEY` | R2 API access key |
 | `R2_SECRET_KEY` | R2 API secret key |
 | `R2_AUDIO_BUCKET` | R2 bucket for audio files |
 | `R2_INGEST_BUCKET` | R2 bucket for ingestion uploads |
-| `NEXTAUTH_SECRET` | NextAuth secret (any random string) |
-| `SALT` | Password salt (any random string) |
 
 ---
 
@@ -226,14 +230,3 @@ The API container is not running. Check:
 docker compose ps
 docker compose logs api --tail=20
 ```
-
----
-
-## Sprint 1 Deliverables ✅
-
-- `docker compose up` → full stack live in under 90 seconds
-- `alembic upgrade head` → 9 tables created in persona DB
-- Every teammate can `curl http://localhost:8001/healthz`
-- Chunk contract merged and frozen in `shared/contracts/chunk.py`
-- R2 object storage configured with presigned URL support
-- Ingestion job state machine sketched in `ingest/runner.py`

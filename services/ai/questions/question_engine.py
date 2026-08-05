@@ -1,7 +1,7 @@
 import os
 import json
 from dotenv import load_dotenv
-from google import genai
+import google.generativeai as genai
 from services.ai.questions.assess_gaps import assess_gaps
 from pathlib import Path
 
@@ -17,7 +17,8 @@ for env_path in [
 load_dotenv(env_path)
 
 # Configure Gemini
-client_gemini = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel("gemini-2.0-flash")
 
 # Hand-curated starter questions for new users (onboarding)
 STARTER_QUESTIONS = [
@@ -74,10 +75,7 @@ def next_question(user_id: str, persona_json: dict) -> dict:
     """
 
     # Call Gemini API
-    response = client_gemini.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
+    response = model.generate_content(prompt)
     question = response.text.strip()
 
     return {
@@ -86,27 +84,3 @@ def next_question(user_id: str, persona_json: dict) -> dict:
         "gap_field": top_gap["field"],
         "gap_type": top_gap["gap_type"]
     }
-
-# Quick test
-# if __name__ == "__main__":
-#     # Test starter questions
-#     print("=== Starter Questions ===")
-#     for i, q in enumerate(STARTER_QUESTIONS):
-#         print(f"{i+1}. {q}")
-#
-#     # Test next_question with empty persona
-#     print("\n=== Generated Question (empty persona) ===")
-#     test_persona = {
-#         "name": "Sara",
-#         "profession": "",
-#         "city": "",
-#         "hobbies": [],
-#         "goals": [],
-#         "personality": "",
-#         "background": "",
-#         "updated_at": "2026-05-23T00:00:00+00:00"
-#     }
-#     result = next_question("test-user", test_persona)
-#     print(f"Question: {result['question']}")
-#     print(f"Gap field: {result['gap_field']}")
-#     print(f"Gap type: {result['gap_type']}")

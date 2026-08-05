@@ -3,5 +3,6 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
 COPY . .
+RUN npm run build
 EXPOSE 3002
-CMD ["npm", "run", "dev"]
+CMD ["npm", "start"]

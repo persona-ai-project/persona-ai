@@ -99,6 +99,69 @@ def logout():
     return {"message": "Logged out successfully!"}
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+@router.post("/forgot-password")
+def forgot_password(request: ForgotPasswordRequest):
+    with _engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT id FROM users WHERE email = :email"),
+            {"email": request.email}
+        ).fetchone()
+
+    if not row:
+        return {"message": "If an account exists with that email, a reset link has been sent."}
+
+    reset_token = jwt.encode(
+        {
+            "sub": str(row[0]),
+            "email": request.email,
+            "iat": datetime.now(timezone.utc),
+            "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+            "purpose": "password_reset",
+        },
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+    print(f"[PASSWORD RESET] Token for {request.email}: {reset_token}")
+    print(f"[PASSWORD RESET] Frontend should redirect to: /reset-password?token={reset_token}")
+
+    return {"message": "If an account exists with that email, a reset link has been sent."}
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/reset-password")
+def reset_password(request: ResetPasswordRequest):
+    try:
+        payload = jwt.decode(request.token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=400, detail="Reset link has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=400, detail="Invalid reset link")
+
+    if payload.get("purpose") != "password_reset":
+        raise HTTPException(status_code=400, detail="Invalid reset link")
+
+    user_id = payload["sub"]
+    new_hash = bcrypt.hashpw(request.new_password.encode(), bcrypt.gensalt()).decode()
+
+    with _engine.connect() as conn:
+        conn.execute(
+            text("UPDATE users SET password_hash = :pw WHERE id = :id"),
+            {"pw": new_hash, "id": user_id}
+        )
+        conn.commit()
+
+    return {"message": "Password reset successful! You can now sign in."}
+
+
 class GoogleLoginRequest(BaseModel):
     credential: str
 

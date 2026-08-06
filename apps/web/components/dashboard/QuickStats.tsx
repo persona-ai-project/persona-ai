@@ -6,8 +6,7 @@ import { Brain, Calendar, MessageCircle, Target } from "lucide-react";
 import { useEffect as useEffectReact, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+import { API_URL } from "@/lib/config";
 
 interface StatItem {
   label: string;

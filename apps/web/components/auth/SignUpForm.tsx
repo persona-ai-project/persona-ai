@@ -3,15 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Check, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { GoogleButton } from "@/components/auth/GoogleButton";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { API_URL } from "@/lib/config";
 
 function AuthDivider() {
   return (
@@ -53,17 +53,24 @@ const STRENGTH_CONFIG: Record<
   PasswordStrength,
   { label: string; width: string; color: string }
 > = {
-  weak: { label: "Weak", width: "w-1/3", color: "bg-primary/40" },
-  medium: { label: "Medium", width: "w-2/3", color: "bg-primary/70" },
-  strong: { label: "Strong", width: "w-full", color: "bg-primary" },
+  weak: { label: "Weak", width: "w-1/3", color: "bg-red-500" },
+  medium: { label: "Medium", width: "w-2/3", color: "bg-yellow-500" },
+  strong: { label: "Strong", width: "w-full", color: "bg-green-500" },
 };
+
+const PASSWORD_RULES = [
+  { label: "At least 8 characters", test: (p: string) => p.length >= 8 },
+  { label: "Uppercase letter", test: (p: string) => /[A-Z]/.test(p) },
+  { label: "Lowercase letter", test: (p: string) => /[a-z]/.test(p) },
+  { label: "Number", test: (p: string) => /\d/.test(p) },
+  { label: "Special character", test: (p: string) => /[^a-zA-Z0-9]/.test(p) },
+];
 
 interface FormErrors {
   fullName?: string;
   email?: string;
   password?: string;
   confirmPassword?: string;
-  terms?: string;
 }
 
 export function SignUpForm() {
@@ -74,7 +81,6 @@ export function SignUpForm() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [termsAccepted, setTermsAccepted] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -105,10 +111,6 @@ export function SignUpForm() {
       nextErrors.confirmPassword = "Passwords do not match";
     }
 
-    if (!termsAccepted) {
-      nextErrors.terms = "You must accept the terms to continue";
-    }
-
     return nextErrors;
   };
 
@@ -121,25 +123,34 @@ export function SignUpForm() {
 
     setIsSubmitting(true);
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/auth/signup`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        }
-      );
+      const response = await fetch(`${API_URL}/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-      const data = await response.json();
-
-      if (!response.ok) {
+      const text = await response.text();
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(text);
+      } catch {
         throw new Error(
-          data?.detail || "Something went wrong. Please try again."
+          `Server error (${response.status}). Please try again later.`
         );
       }
 
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("user_id", data.user_id);
+      if (!response.ok) {
+        throw new Error(
+          (data as { detail?: string }).detail ||
+            "Something went wrong. Please try again."
+        );
+      }
+
+      localStorage.setItem(
+        "access_token",
+        (data as { access_token: string }).access_token
+      );
+      localStorage.setItem("user_id", (data as { user_id: string }).user_id);
       toast.success("Account created! Let's build your persona.");
       router.push("/onboarding");
     } catch (error) {
@@ -233,25 +244,56 @@ export function SignUpForm() {
           {errors.password ? (
             <p className="text-xs text-red-500">{errors.password}</p>
           ) : null}
-          {passwordStrength ? (
-            <div className="flex flex-col gap-1.5 pt-0.5">
+
+          {password && (
+            <div className="flex flex-col gap-2 pt-1">
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                 <div
                   className={cn(
                     "h-full rounded-full transition-all duration-300",
-                    STRENGTH_CONFIG[passwordStrength].width,
-                    STRENGTH_CONFIG[passwordStrength].color
+                    passwordStrength
+                      ? STRENGTH_CONFIG[passwordStrength].width
+                      : "",
+                    passwordStrength
+                      ? STRENGTH_CONFIG[passwordStrength].color
+                      : ""
                   )}
                 />
               </div>
-              <p className="text-xs text-muted-foreground">
-                Password strength:{" "}
-                <span className="text-primary">
-                  {STRENGTH_CONFIG[passwordStrength].label}
-                </span>
-              </p>
+              {passwordStrength && (
+                <p className="text-xs text-muted-foreground">
+                  Strength:{" "}
+                  <span className="text-foreground font-medium">
+                    {STRENGTH_CONFIG[passwordStrength].label}
+                  </span>
+                </p>
+              )}
+              <div className="grid grid-cols-1 gap-1">
+                {PASSWORD_RULES.map((rule) => {
+                  const passed = rule.test(password);
+                  return (
+                    <div
+                      key={rule.label}
+                      className="flex items-center gap-1.5 text-xs"
+                    >
+                      {passed ? (
+                        <Check className="size-3 text-green-500" />
+                      ) : (
+                        <X className="size-3 text-muted-foreground/50" />
+                      )}
+                      <span
+                        className={
+                          passed ? "text-green-500" : "text-muted-foreground"
+                        }
+                      >
+                        {rule.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          ) : null}
+          )}
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -291,39 +333,6 @@ export function SignUpForm() {
           </div>
           {errors.confirmPassword ? (
             <p className="text-xs text-red-500">{errors.confirmPassword}</p>
-          ) : null}
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-start gap-2.5">
-            <Checkbox
-              id="terms"
-              checked={termsAccepted}
-              onCheckedChange={(checked) => {
-                setTermsAccepted(checked);
-                if (errors.terms) {
-                  setErrors((prev) => ({ ...prev, terms: undefined }));
-                }
-              }}
-              aria-invalid={!!errors.terms}
-              className="mt-0.5"
-            />
-            <Label
-              htmlFor="terms"
-              className="text-sm leading-snug font-normal text-muted-foreground"
-            >
-              I agree to the{" "}
-              <Link href="#" className="text-primary hover:underline">
-                Terms of Service
-              </Link>{" "}
-              and{" "}
-              <Link href="#" className="text-primary hover:underline">
-                Privacy Policy
-              </Link>
-            </Label>
-          </div>
-          {errors.terms ? (
-            <p className="text-xs text-red-500">{errors.terms}</p>
           ) : null}
         </div>
 

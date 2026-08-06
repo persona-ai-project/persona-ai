@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, ArrowLeft, Mail, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { GoogleButton } from "@/components/auth/GoogleButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { API_URL } from "@/lib/config";
 
 function AuthDivider() {
   return (
@@ -34,13 +35,29 @@ interface FormErrors {
   password?: string;
 }
 
+async function safeJsonParse(response: Response): Promise<Record<string, unknown>> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Server error (${response.status}). Please try again later.`
+    );
+  }
+}
+
+type View = "login" | "forgot" | "forgot-sent";
+
 export function LoginForm() {
   const router = useRouter();
+  const [view, setView] = useState<View>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotError, setForgotError] = useState("");
 
   const validate = (): FormErrors => {
     const nextErrors: FormErrors = {};
@@ -69,28 +86,32 @@ export function LoginForm() {
 
     setIsSubmitting(true);
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/auth/login`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        }
-      );
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-      const data = await response.json();
+      const data = await safeJsonParse(response);
 
       if (!response.ok) {
-        throw new Error(data?.detail || "Invalid email or password.");
+        throw new Error(
+          (data as { detail?: string }).detail || "Invalid email or password."
+        );
       }
 
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("user_id", data.user_id);
+      localStorage.setItem(
+        "access_token",
+        (data as { access_token: string }).access_token
+      );
+      localStorage.setItem("user_id", (data as { user_id: string }).user_id);
 
       const personaRes = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/persona/${data.user_id}`,
+        `${API_URL}/persona/${(data as { user_id: string }).user_id}`,
         {
-          headers: { Authorization: `Bearer ${data.access_token}` },
+          headers: {
+            Authorization: `Bearer ${(data as { access_token: string }).access_token}`,
+          },
         }
       );
       const persona = await personaRes.json();
@@ -108,6 +129,137 @@ export function LoginForm() {
       );
     }
   };
+
+  const handleForgotPassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setForgotError("");
+
+    if (!forgotEmail.trim()) {
+      setForgotError("Email is required");
+      return;
+    }
+    if (!isValidEmail(forgotEmail)) {
+      setForgotError("Please enter a valid email address");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`${API_URL}/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+
+      const data = await safeJsonParse(response);
+
+      if (!response.ok) {
+        throw new Error(
+          (data as { detail?: string }).detail ||
+            "Failed to send reset email. Please try again."
+        );
+      }
+
+      setView("forgot-sent");
+    } catch (error) {
+      setForgotError(
+        error instanceof Error
+          ? error.message
+          : "Failed to send reset email. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (view === "forgot-sent") {
+    return (
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex size-12 items-center justify-center rounded-full bg-green-500/10">
+            <CheckCircle className="size-6 text-green-500" />
+          </div>
+          <h2 className="text-lg font-semibold">Check your email</h2>
+          <p className="text-sm text-muted-foreground">
+            We sent a password reset link to{" "}
+            <span className="font-medium text-foreground">{forgotEmail}</span>
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setView("login")}
+          className="h-11 w-full text-base"
+        >
+          <ArrowLeft className="mr-2 size-4" />
+          Back to Sign In
+        </Button>
+      </div>
+    );
+  }
+
+  if (view === "forgot") {
+    return (
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
+            <Mail className="size-6 text-primary" />
+          </div>
+          <h2 className="text-lg font-semibold">Reset your password</h2>
+          <p className="text-sm text-muted-foreground">
+            Enter your email and we&apos;ll send you a reset link.
+          </p>
+        </div>
+
+        <form
+          onSubmit={handleForgotPassword}
+          className="flex flex-col gap-4"
+          noValidate
+        >
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="forgotEmail">Email</Label>
+            <Input
+              id="forgotEmail"
+              type="email"
+              placeholder="you@example.com"
+              value={forgotEmail}
+              onChange={(event) => {
+                setForgotEmail(event.target.value);
+                setForgotError("");
+              }}
+              aria-invalid={!!forgotError}
+              className="h-10"
+            />
+            {forgotError ? (
+              <p className="text-xs text-red-500">{forgotError}</p>
+            ) : null}
+          </div>
+
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            className="h-11 w-full text-base"
+          >
+            {isSubmitting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              "Send Reset Link"
+            )}
+          </Button>
+        </form>
+
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setView("login")}
+          className="w-full text-sm"
+        >
+          <ArrowLeft className="mr-2 size-4" />
+          Back to Sign In
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -141,6 +293,7 @@ export function LoginForm() {
             <Label htmlFor="password">Password</Label>
             <button
               type="button"
+              onClick={() => setView("forgot")}
               className="text-xs text-primary transition-colors hover:text-primary/80"
             >
               Forgot password?

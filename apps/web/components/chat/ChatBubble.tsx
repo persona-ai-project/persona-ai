@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { API_URL } from "@/lib/config";
 
 export type ChatMessage = {
   id: string;
@@ -41,7 +42,7 @@ function MessageFeedback({ userId, message, onRegenerate }: { userId: string; me
   const submitFeedback = async (kind: string, rewrite?: string) => {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/feedback`, {
+      await fetch(`${API_URL}/feedback`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -10,8 +10,7 @@ import { PersonaCard } from "@/components/dashboard/PersonaCard";
 import { QuickStats } from "@/components/dashboard/QuickStats";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+import { API_URL } from "@/lib/config";
 
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },

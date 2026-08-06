@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { API_URL, GOOGLE_CLIENT_ID } from "@/lib/config";
 
 declare global {
   interface Window {
@@ -74,28 +75,40 @@ export function GoogleButton({ className }: GoogleButtonProps) {
       setIsLoading(true);
 
       try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/auth/google`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ credential: response.credential }),
-          }
-        );
+        const res = await fetch(`${API_URL}/auth/google`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential: response.credential }),
+        });
 
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data?.detail || "Google login failed.");
+        const text = await res.text();
+        let data: Record<string, unknown>;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw new Error(
+            `Server error (${res.status}). Please try again later.`
+          );
         }
 
-        localStorage.setItem("access_token", data.access_token);
-        localStorage.setItem("user_id", data.user_id);
+        if (!res.ok) {
+          throw new Error(
+            (data as { detail?: string }).detail || "Google login failed."
+          );
+        }
+
+        localStorage.setItem(
+          "access_token",
+          (data as { access_token: string }).access_token
+        );
+        localStorage.setItem("user_id", (data as { user_id: string }).user_id);
 
         const personaRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/persona/${data.user_id}`,
+          `${API_URL}/persona/${(data as { user_id: string }).user_id}`,
           {
-            headers: { Authorization: `Bearer ${data.access_token}` },
+            headers: {
+              Authorization: `Bearer ${(data as { access_token: string }).access_token}`,
+            },
           }
         );
         const persona = await personaRes.json();
@@ -117,10 +130,7 @@ export function GoogleButton({ className }: GoogleButtonProps) {
   );
 
   useEffect(() => {
-    if (googleInitialized.current) return;
-
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    if (!clientId) return;
+    if (googleInitialized.current || !GOOGLE_CLIENT_ID) return;
 
     const script = document.createElement("script");
     script.src = "https://accounts.google.com/gsi/client";
@@ -130,7 +140,7 @@ export function GoogleButton({ className }: GoogleButtonProps) {
       setScriptLoaded(true);
       if (window.google?.accounts?.id) {
         window.google.accounts.id.initialize({
-          client_id: clientId,
+          client_id: GOOGLE_CLIENT_ID,
           callback: handleGoogleCredential,
         });
         googleInitialized.current = true;
@@ -159,9 +169,7 @@ export function GoogleButton({ className }: GoogleButtonProps) {
     };
   }, [handleGoogleCredential]);
 
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-
-  if (!clientId) {
+  if (!GOOGLE_CLIENT_ID) {
     return null;
   }
 

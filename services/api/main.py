@@ -13,10 +13,19 @@ from routers.persona import router as persona_router
 
 app = FastAPI(title="Persona AI API")
 
-_cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3002").split(",")
+_cors_origins = [
+    o.strip()
+    for o in os.getenv("CORS_ORIGINS", "").split(",")
+    if o.strip()
+]
+if not _cors_origins:
+    _cors_origins = [
+        "http://localhost:3002",
+        "http://localhost:3000",
+    ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins + ["http://localhost:3002"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

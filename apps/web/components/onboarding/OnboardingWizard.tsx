@@ -102,6 +102,7 @@ function CompletenessRing({ percentage }: { percentage: number }) {
 
 function QuestionStep({
   currentStep,
+  totalSteps,
   question,
   value,
   onChange,
@@ -111,6 +112,7 @@ function QuestionStep({
   retryMessage,
 }: {
   currentStep: number;
+  totalSteps: number;
   question: string;
   value: string;
   onChange: (value: string) => void;
@@ -409,6 +411,7 @@ export function OnboardingWizard() {
             <QuestionStep
               key={currentStep}
               currentStep={currentStep}
+              totalSteps={totalSteps}
               question={questions[currentStep]?.text || ""}
               value={answers[currentStep]}
               onChange={handleAnswerChange}

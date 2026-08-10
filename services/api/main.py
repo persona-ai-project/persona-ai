@@ -23,6 +23,9 @@ if not _cors_origins:
         "http://localhost:3002",
         "http://localhost:3000",
     ]
+_production_web = "https://web-production-4e2b6.up.railway.app"
+if _production_web not in _cors_origins:
+    _cors_origins.append(_production_web)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,

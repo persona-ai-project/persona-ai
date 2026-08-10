@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, useMotionValue, useTransform, animate } from "framer-motion";
-import { Check } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,6 @@ const NAV_LINKS = [
   { href: "/onboarding", label: "Onboarding" },
 ] as const;
 
-const TOTAL_STEPS = 5;
-
 function PersonaAILogo() {
   return (
     <h1 className="text-xl font-semibold tracking-tight text-primary sm:text-2xl">
@@ -29,10 +27,10 @@ function PersonaAILogo() {
   );
 }
 
-function ProgressDots({ currentStep }: { currentStep: number }) {
+function ProgressDots({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) {
   return (
     <div className="flex items-center justify-center gap-2">
-      {Array.from({ length: TOTAL_STEPS }).map((_, index) => (
+      {Array.from({ length: totalSteps }).map((_, index) => (
         <div
           key={index}
           className={cn(
@@ -110,6 +108,7 @@ function QuestionStep({
   onNext,
   isLast,
   isSubmitting,
+  retryMessage,
 }: {
   currentStep: number;
   question: string;
@@ -118,6 +117,7 @@ function QuestionStep({
   onNext: () => void;
   isLast: boolean;
   isSubmitting: boolean;
+  retryMessage?: string | null;
 }) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,13 +134,18 @@ function QuestionStep({
       className="flex w-full max-w-lg flex-col items-center gap-8 px-4"
     >
       <PersonaAILogo />
-      <ProgressDots currentStep={currentStep} />
+      <ProgressDots currentStep={currentStep} totalSteps={totalSteps} />
 
       <Card className="w-full border-border/50 bg-surface shadow-xl">
         <CardContent className="flex flex-col gap-6 p-6 sm:p-8">
           <p className="text-balance text-center text-lg font-medium leading-relaxed text-foreground sm:text-xl">
             {question}
           </p>
+          {retryMessage && (
+            <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 px-4 py-2 text-sm text-yellow-600 dark:text-yellow-400">
+              {retryMessage}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <Input
               type="text"
@@ -262,6 +267,10 @@ export function OnboardingWizard() {
   const [userId, setUserId] = useState<string | null>(null);
   const [completeness, setCompleteness] = useState(0);
   const [questions, setQuestions] = useState<{ id: string; text: string }[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [retryMessage, setRetryMessage] = useState<string | null>(null);
+
+  const totalSteps = questions.length;
 
   useEffect(() => {
     const storedUserId = localStorage.getItem("user_id");
@@ -283,6 +292,8 @@ export function OnboardingWizard() {
           }));
           setQuestions(qs);
           setAnswers(Array(qs.length).fill(""));
+        } else {
+          throw new Error(`HTTP ${res.status}`);
         }
       } catch (e) {
         console.error("Failed to fetch questions:", e);
@@ -295,13 +306,15 @@ export function OnboardingWizard() {
         ];
         setQuestions(fallback);
         setAnswers(Array(fallback.length).fill(""));
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchQuestions();
   }, []);
 
   const submitAnswer = async (questionText: string, answer: string) => {
-    if (!userId) return;
+    if (!userId) return null;
 
     try {
       const token = localStorage.getItem("access_token") || "";
@@ -321,7 +334,7 @@ export function OnboardingWizard() {
       if (response.ok) {
         const data = await response.json();
         if (data.accepted) {
-          // Update persona after each accepted answer
+          setRetryMessage(null);
           const personaResponse = await fetch(`${API_URL}/persona/${userId}/completeness`, {
             headers: { "Authorization": `Bearer ${token}` },
           });
@@ -329,23 +342,32 @@ export function OnboardingWizard() {
             const personaData = await personaResponse.json();
             setCompleteness(personaData.completeness * 100);
           }
+          return true;
+        } else {
+          setRetryMessage(data.message || "Please give a more detailed answer!");
+          return false;
         }
       }
     } catch (error) {
       console.error("Failed to submit answer:", error);
     }
+    return null;
   };
 
   const handleNext = async () => {
     setIsSubmitting(true);
+    setRetryMessage(null);
 
-    // Submit the current answer to the API
     const currentQuestion = questions[currentStep];
     if (answers[currentStep].trim()) {
-      await submitAnswer(currentQuestion.text, answers[currentStep]);
+      const accepted = await submitAnswer(currentQuestion.text, answers[currentStep]);
+      if (accepted === false) {
+        setIsSubmitting(false);
+        return;
+      }
     }
 
-    if (currentStep < TOTAL_STEPS - 1) {
+    if (currentStep < totalSteps - 1) {
       setCurrentStep((prev) => prev + 1);
     } else {
       setIsComplete(true);
@@ -362,6 +384,20 @@ export function OnboardingWizard() {
     });
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen flex-col bg-background">
+        <OnboardingNav />
+        <div className="flex flex-1 items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="size-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading questions...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <OnboardingNav />
@@ -377,8 +413,9 @@ export function OnboardingWizard() {
               value={answers[currentStep]}
               onChange={handleAnswerChange}
               onNext={handleNext}
-              isLast={currentStep === TOTAL_STEPS - 1}
+              isLast={currentStep === totalSteps - 1}
               isSubmitting={isSubmitting}
+              retryMessage={retryMessage}
             />
           )}
         </AnimatePresence>

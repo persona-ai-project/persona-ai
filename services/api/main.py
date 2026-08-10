@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, text
 from routers.auth import router as auth_router
 from routers.persona import router as persona_router
 
-app = FastAPI(title="Persona AI API")
+app = FastAPI(title="Persona AI API", version="1.1.0")
 
 _cors_origins = [
     o.strip()

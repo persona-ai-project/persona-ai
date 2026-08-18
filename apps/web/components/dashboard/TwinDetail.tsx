@@ -189,7 +189,7 @@ export function TwinDetail({ twinId }: TwinDetailProps) {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardContent className="py-4">
             <p className="text-sm text-muted-foreground">Total Chats</p>
@@ -212,6 +212,14 @@ export function TwinDetail({ twinId }: TwinDetailProps) {
           <CardContent className="py-4">
             <p className="text-sm text-muted-foreground">Sources</p>
             <p className="text-2xl font-bold text-white">{sources.length}</p>
+          </CardContent>
+        </Card>
+        <Card className={twin.avg_fidelity && twin.avg_fidelity >= 0.7 ? "border-green-500/50" : twin.avg_fidelity && twin.avg_fidelity >= 0.4 ? "border-yellow-500/50" : "border-red-500/50"}>
+          <CardContent className="py-4">
+            <p className="text-sm text-muted-foreground">Fidelity Score</p>
+            <p className="text-2xl font-bold text-white">
+              {twin.avg_fidelity ? `${(twin.avg_fidelity * 100).toFixed(0)}%` : "N/A"}
+            </p>
           </CardContent>
         </Card>
       </div>

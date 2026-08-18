@@ -109,3 +109,22 @@ def list_objects(prefix: str = "", bucket: str = R2_INGEST_BUCKET) -> list[str]:
     client = get_client()
     response = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
     return [obj["Key"] for obj in response.get("Contents", [])]
+
+
+def download_bytes(key: str, bucket: str = R2_INGEST_BUCKET) -> bytes:
+    """
+    Download an object from R2 and return its bytes.
+
+    Args:
+        key:    Object key (path) inside the bucket
+        bucket: Bucket name — defaults to ingestion bucket
+
+    Returns:
+        Raw bytes of the downloaded object
+    """
+    import io
+    client = get_client()
+    buffer = io.BytesIO()
+    client.download_fileobj(bucket, key, buffer)
+    buffer.seek(0)
+    return buffer.read()

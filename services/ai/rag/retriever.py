@@ -62,13 +62,14 @@ def ensure_collection():
         )
 
 
-def index(user_id: str, chunks: list, twin_id: str = None) -> int:
+def index(user_id: str, chunks: list, twin_id: str = None, source_id: str = None) -> int:
     """
     Embed and store a list of text chunks in Qdrant for a specific user.
     Args:
         user_id: Unique identifier for the user
         chunks: List of Chunk objects to index
         twin_id: Optional twin ID for multi-tenant filtering
+        source_id: Optional source ID for source-level filtering
     Returns:
         Number of chunks successfully indexed
     """
@@ -85,7 +86,7 @@ def index(user_id: str, chunks: list, twin_id: str = None) -> int:
             "user_id": user_id,
             "text": chunk.text,
             "source": chunk.source,
-            "source_id": chunk.source_id,
+            "source_id": source_id or chunk.source_id,
             "created_at": chunk.created_at.isoformat(),
             "metadata": chunk.metadata
         }
@@ -253,12 +254,13 @@ def delete_by_twin(twin_id: str) -> int:
     return 1
 
 
-def delete(user_id: str, source: str = None) -> int:
+def delete(user_id: str, source: str = None, source_id: str = None) -> int:
     """
-    Delete chunks for a user. Optionally filter by source.
+    Delete chunks for a user. Optionally filter by source or source_id.
     Args:
         user_id: User whose chunks to delete
-        source: Optional source filter (e.g. "whatsapp")
+        source: Optional source filter (e.g. "whatsapp", "twin_source")
+        source_id: Optional source_id filter (e.g. specific source UUID)
     Returns:
         Number of chunks deleted
     """
@@ -268,6 +270,11 @@ def delete(user_id: str, source: str = None) -> int:
     if source:
         conditions.append(
             FieldCondition(key="source", match=MatchValue(value=source))
+        )
+
+    if source_id:
+        conditions.append(
+            FieldCondition(key="source_id", match=MatchValue(value=source_id))
         )
 
     client.delete(

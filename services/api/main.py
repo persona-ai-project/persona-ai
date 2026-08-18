@@ -113,6 +113,7 @@ from routers.twin_sources import router as twin_sources_router
 from routers.interviews import router as interviews_router
 from routers.twin_chat import router as twin_chat_router
 from routers.fidelity import router as fidelity_router
+from routers.subscriptions import router as subscriptions_router
 
 app.include_router(chat_router)
 app.include_router(questions_router)
@@ -126,6 +127,7 @@ app.include_router(twin_sources_router)
 app.include_router(interviews_router)
 app.include_router(twin_chat_router)
 app.include_router(fidelity_router)
+app.include_router(subscriptions_router)
 
 
 @app.get("/healthz")

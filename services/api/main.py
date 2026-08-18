@@ -108,6 +108,7 @@ from routers.voice import router as voice_router
 from routers.chat import router as chat_router
 from routers.questions import router as questions_router
 from routers.feedback import router as feedback_router
+from routers.twins import router as twins_router
 
 app.include_router(chat_router)
 app.include_router(questions_router)
@@ -116,6 +117,7 @@ app.include_router(ingest_router)
 app.include_router(voice_router)
 app.include_router(auth_router)
 app.include_router(persona_router)
+app.include_router(twins_router)
 
 
 @app.get("/healthz")

@@ -24,6 +24,8 @@ class User(Base):
 
     personas       = relationship("Persona", back_populates="user")
     messages       = relationship("Message", back_populates="user")
+    twins          = relationship("Twin", back_populates="owner")
+    subscriptions  = relationship("UserSubscription", back_populates="user")
 
 
 class Persona(Base):

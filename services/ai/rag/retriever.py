@@ -54,13 +54,21 @@ def ensure_collection():
             field_schema=PayloadSchemaType.KEYWORD
         )
 
+        # Create payload index on twin_id for multi-tenant filtering
+        client.create_payload_index(
+            collection_name=COLLECTION_NAME,
+            field_name="twin_id",
+            field_schema=PayloadSchemaType.KEYWORD
+        )
 
-def index(user_id: str, chunks: list) -> int:
+
+def index(user_id: str, chunks: list, twin_id: str = None) -> int:
     """
     Embed and store a list of text chunks in Qdrant for a specific user.
     Args:
         user_id: Unique identifier for the user
         chunks: List of Chunk objects to index
+        twin_id: Optional twin ID for multi-tenant filtering
     Returns:
         Number of chunks successfully indexed
     """
@@ -72,6 +80,18 @@ def index(user_id: str, chunks: list) -> int:
         # Generate dense and sparse vectors for chunk text
         vectors = embedder.embed(chunk.text)
 
+        # Build payload with optional twin_id
+        payload = {
+            "user_id": user_id,
+            "text": chunk.text,
+            "source": chunk.source,
+            "source_id": chunk.source_id,
+            "created_at": chunk.created_at.isoformat(),
+            "metadata": chunk.metadata
+        }
+        if twin_id:
+            payload["twin_id"] = twin_id
+
         # Build Qdrant point with vectors and metadata payload
         point = PointStruct(
             id=abs(hash(f"{user_id}_{chunk.source_id}_{i}")) % (2**63),
@@ -82,14 +102,7 @@ def index(user_id: str, chunks: list) -> int:
                     "values": vectors["sparse"].values.tolist()
                 }
             },
-            payload={
-                "user_id": user_id,
-                "text": chunk.text,
-                "source": chunk.source,
-                "source_id": chunk.source_id,
-                "created_at": chunk.created_at.isoformat(),
-                "metadata": chunk.metadata
-            }
+            payload=payload
         )
         points.append(point)
 
@@ -135,7 +148,7 @@ def search(user_id: str, query: str, k: int = 8) -> list:
         }
         for r in results
     ]
-def search_hybrid(user_id: str, query: str, k: int = 8) -> list:
+def search_hybrid(user_id: str, query: str, k: int = 8, twin_id: str = None) -> list:
     """
     Search using both dense and sparse vectors fused via RRF.
     Better than dense-only search for persona memory retrieval.
@@ -143,6 +156,7 @@ def search_hybrid(user_id: str, query: str, k: int = 8) -> list:
         user_id: Filter results to this user only
         query: Search query text
         k: Number of top results to return (default 8)
+        twin_id: Optional twin ID for multi-tenant filtering
     Returns:
         List of matching chunks with scores
     """
@@ -150,13 +164,21 @@ def search_hybrid(user_id: str, query: str, k: int = 8) -> list:
     # Embed query to get both dense and sparse vectors
     vectors = embedder.embed(query)
 
-    # User filter — only return chunks belonging to this user
-    user_filter = Filter(
-        must=[FieldCondition(
-            key="user_id",
-            match=MatchValue(value=user_id)
-        )]
-    )
+    # Build filter conditions
+    filter_conditions = [FieldCondition(
+        key="user_id",
+        match=MatchValue(value=user_id)
+    )]
+    
+    # Add twin_id filter if provided (for multi-tenant isolation)
+    if twin_id:
+        filter_conditions.append(FieldCondition(
+            key="twin_id",
+            match=MatchValue(value=twin_id)
+        ))
+
+    # User filter — only return chunks belonging to this user (and optionally this twin)
+    user_filter = Filter(must=filter_conditions)
 
     # Run hybrid search with RRF fusion
     results = client.query_points(
@@ -213,6 +235,24 @@ def search_hybrid(user_id: str, query: str, k: int = 8) -> list:
         total=len(boosted)
     )
 
+def delete_by_twin(twin_id: str) -> int:
+    """
+    Delete all chunks for a specific twin.
+    Args:
+        twin_id: Twin whose chunks to delete
+    Returns:
+        Number of chunks deleted
+    """
+    conditions = [FieldCondition(key="twin_id", match=MatchValue(value=twin_id))]
+
+    client.delete(
+        collection_name=COLLECTION_NAME,
+        points_selector=Filter(must=conditions)
+    )
+
+    return 1
+
+
 def delete(user_id: str, source: str = None) -> int:
     """
     Delete chunks for a user. Optionally filter by source.
@@ -259,6 +299,30 @@ def stats(user_id: str) -> dict:
 
     return {
         "user_id": user_id,
+        "total_chunks": result.count
+    }
+
+
+def stats_by_twin(twin_id: str) -> dict:
+    """
+    Get chunk statistics for a specific twin.
+    Args:
+        twin_id: Twin to get stats for
+    Returns:
+        Dictionary with total chunks and breakdown by source
+    """
+    result = client.count(
+        collection_name=COLLECTION_NAME,
+        count_filter=Filter(
+            must=[FieldCondition(
+                key="twin_id",
+                match=MatchValue(value=twin_id)
+            )]
+        )
+    )
+
+    return {
+        "twin_id": twin_id,
         "total_chunks": result.count
     }
 # Quick test for Dense Search

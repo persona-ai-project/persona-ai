@@ -28,7 +28,8 @@ def _try_groq(messages: list, model: str = "llama-3.1-8b-instant") -> str:
         raise RuntimeError("Groq circuit open")
     try:
         from groq import Groq
-        client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        api_key = os.getenv("GROQ_API_KEY")
+        client = Groq(api_key=api_key)
         response = client.chat.completions.create(
             model=model, messages=messages, max_tokens=1024, temperature=0.7
         )

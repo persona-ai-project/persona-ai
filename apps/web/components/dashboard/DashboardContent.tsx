@@ -17,6 +17,7 @@ const NAV_LINKS = [
   { href: "/owner", label: "My Twins" },
   { href: "/directory", label: "Directory" },
   { href: "/chat", label: "Chat" },
+  { href: "/analytics", label: "Analytics" },
   { href: "/subscription", label: "Subscription" },
   { href: "/onboarding", label: "Onboarding" },
 ] as const;

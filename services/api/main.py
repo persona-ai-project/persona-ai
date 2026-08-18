@@ -110,6 +110,7 @@ from routers.questions import router as questions_router
 from routers.feedback import router as feedback_router
 from routers.twins import router as twins_router
 from routers.twin_sources import router as twin_sources_router
+from routers.interviews import router as interviews_router
 
 app.include_router(chat_router)
 app.include_router(questions_router)
@@ -120,6 +121,7 @@ app.include_router(auth_router)
 app.include_router(persona_router)
 app.include_router(twins_router)
 app.include_router(twin_sources_router)
+app.include_router(interviews_router)
 
 
 @app.get("/healthz")

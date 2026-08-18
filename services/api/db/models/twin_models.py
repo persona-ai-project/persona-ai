@@ -49,6 +49,11 @@ class Twin(Base):
     boundaries      = Column(JSONB, nullable=True)  # what the twin won't discuss
     knowledge_anchors = Column(JSONB, nullable=True)  # core facts to always include
     
+    # Language support
+    languages       = Column(JSONB, default=["en"])  # list of supported language codes
+    default_language = Column(Text, default="en")  # default response language
+    auto_detect_language = Column(Boolean, default=True)  # auto-detect user language
+    
     # Status
     status          = Column(Text, default="draft", nullable=False)
     # draft, active, archived, suspended

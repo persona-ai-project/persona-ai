@@ -104,7 +104,8 @@ def _verify_twin_access(conn, twin_id: str, user_id: str = None, public: bool = 
     """Verify twin exists and user has access."""
     row = conn.execute(
         text("""SELECT id, owner_id, name, status, visibility, personality_config, 
-                       boundaries, knowledge_anchors, verification_level
+                       boundaries, knowledge_anchors, verification_level,
+                       languages, default_language, auto_detect_language
                 FROM twins 
                 WHERE id = :id AND is_active = true"""),
         {"id": twin_id}
@@ -133,6 +134,9 @@ def _verify_twin_access(conn, twin_id: str, user_id: str = None, public: bool = 
         "boundaries": row[6],
         "knowledge_anchors": row[7],
         "verification_level": row[8],
+        "languages": row[9] or ["en"],
+        "default_language": row[10] or "en",
+        "auto_detect_language": row[11] if row[11] is not None else True,
     }
 
 
@@ -205,12 +209,16 @@ def _build_system_prompt(
     twin: dict,
     knowledge_chunks: list[dict],
     knowledge_items: list[dict],
+    user_language: str | None = None,
 ) -> str:
     """Build the system prompt for twin response generation."""
     name = twin["name"]
     personality = twin.get("personality_config") or {}
     boundaries = twin.get("boundaries") or {}
     knowledge_anchors = twin.get("knowledge_anchors") or {}
+    twin_languages = twin.get("languages") or ["en"]
+    default_language = twin.get("default_language") or "en"
+    auto_detect = twin.get("auto_detect_language", True)
 
     # Build personality section
     personality_section = ""
@@ -245,6 +253,15 @@ def _build_system_prompt(
         for item in knowledge_items[:10]:
             knowledge_section += f"- [{item['content_type']}] {item['content'][:150]}\n"
 
+    # Build language section
+    language_section = ""
+    if user_language and auto_detect:
+        from services.ai.language.detector import get_language_prompt_addition, SUPPORTED_LANGUAGES
+        language_section = "\n\n" + get_language_prompt_addition(user_language, twin_languages)
+    elif twin_languages and len(twin_languages) > 1:
+        lang_names = [SUPPORTED_LANGUAGES.get(l, {}).get("name", l) for l in twin_languages[:3]]
+        language_section = f"\n\nThis twin can respond in: {', '.join(lang_names)}. Match the user's language when possible."
+
     return f"""You are {name}, a digital twin created from real information about a person.
 
 Your role is to respond as {name} would, based on the knowledge provided below.
@@ -258,7 +275,7 @@ IMPORTANT RULES:
 5. Stay in character as {name} at all times
 6. If asked about topics in your boundaries, politely redirect or say you'd prefer not to discuss that
 7. Be warm, engaging, and authentic
-{personality_section}{boundaries_section}{anchors_section}{knowledge_section}
+{personality_section}{boundaries_section}{anchors_section}{knowledge_section}{language_section}
 Remember: You are {name}. Respond as they would, with their knowledge and personality."""
 
 
@@ -413,6 +430,11 @@ def twin_chat(
     try:
         # Verify twin access
         twin = _verify_twin_access(db, twin_id, user_id)
+
+        # Detect user language
+        from services.ai.language.detector import detect_language
+        detected_lang = detect_language(body.message)
+        user_language = detected_lang["code"] if detected_lang["confidence"] > 0.5 else None
 
         # Load knowledge
         knowledge_chunks = _load_twin_knowledge(db, twin_id, body.message, body.max_knowledge_items)

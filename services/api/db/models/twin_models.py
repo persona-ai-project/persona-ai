@@ -54,6 +54,12 @@ class Twin(Base):
     default_language = Column(Text, default="en")  # default response language
     auto_detect_language = Column(Boolean, default=True)  # auto-detect user language
     
+    # Voice configuration
+    voice_id        = Column(Text, default="en_US-lessac-medium")  # Piper TTS voice model
+    voice_enabled   = Column(Boolean, default=True)  # enable voice for this twin
+    voice_speed     = Column(Float, default=1.0)  # speech rate multiplier
+    voice_pitch     = Column(Float, default=1.0)  # pitch multiplier
+    
     # Status
     status          = Column(Text, default="draft", nullable=False)
     # draft, active, archived, suspended

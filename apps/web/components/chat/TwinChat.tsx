@@ -21,6 +21,7 @@ interface Message {
   sources?: any[];
   knowledge_used?: number;
   confidence?: number;
+  audio_url?: string;
 }
 
 export function TwinChat({ twinId }: TwinChatProps) {
@@ -29,10 +30,16 @@ export function TwinChat({ twinId }: TwinChatProps) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [twinName, setTwinName] = useState("Twin");
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     fetchTwinName();
+    fetchVoiceConfig();
   }, [twinId]);
 
   useEffect(() => {
@@ -51,6 +58,21 @@ export function TwinChat({ twinId }: TwinChatProps) {
       }
     } catch (error) {
       console.error("Failed to fetch twin:", error);
+    }
+  };
+
+  const fetchVoiceConfig = async () => {
+    try {
+      const token = localStorage.getItem("access_token") || "";
+      const res = await fetch(`${API_URL}/twins/${twinId}/voice/config`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setVoiceEnabled(data.voice_enabled);
+      }
+    } catch (error) {
+      console.error("Failed to fetch voice config:", error);
     }
   };
 
@@ -117,6 +139,108 @@ export function TwinChat({ twinId }: TwinChatProps) {
     }
   };
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream, {
+        mimeType: "audio/webm",
+      });
+      audioChunksRef.current = [];
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorderRef.current.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        await sendVoiceMessage(audioBlob);
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error("Failed to start recording:", error);
+      alert("Could not access microphone. Please check permissions.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const sendVoiceMessage = async (audioBlob: Blob) => {
+    setLoading(true);
+
+    const userMessage: Message = {
+      id: `temp-${Date.now()}`,
+      role: "user",
+      content: "🎤 Voice message",
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+
+    try {
+      const token = localStorage.getItem("access_token") || "";
+      const formData = new FormData();
+      formData.append("file", audioBlob, "recording.webm");
+
+      const res = await fetch(`${API_URL}/twins/${twinId}/voice/chat`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const assistantMessage: Message = {
+          id: `voice-${Date.now()}`,
+          role: "assistant",
+          content: data.text_response,
+          audio_url: data.audio_url,
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+
+        // Auto-play response audio
+        if (data.audio_url) {
+          playAudio(data.audio_url);
+        }
+      } else {
+        const errorData = await res.json();
+        const errorMessage: Message = {
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: `Error: ${errorData.detail || "Voice chat failed"}`,
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      const errorMessage: Message = {
+        id: `error-${Date.now()}`,
+        role: "assistant",
+        content: "Error: Failed to connect to voice service",
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const playAudio = (url: string) => {
+    setPlayingAudio(url);
+    const audio = new Audio(url);
+    audio.onended = () => setPlayingAudio(null);
+    audio.play().catch((err) => {
+      console.error("Failed to play audio:", err);
+      setPlayingAudio(null);
+    });
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -140,6 +264,11 @@ export function TwinChat({ twinId }: TwinChatProps) {
           <h1 className="font-semibold text-white">{twinName}</h1>
           <p className="text-xs text-muted-foreground">AI Digital Twin</p>
         </div>
+        {voiceEnabled && (
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-green-400">🎤 Voice Enabled</span>
+          </div>
+        )}
       </div>
 
       {/* Messages */}
@@ -153,6 +282,11 @@ export function TwinChat({ twinId }: TwinChatProps) {
             <p className="text-sm text-muted-foreground">
               Ask {twinName} anything based on their knowledge
             </p>
+            {voiceEnabled && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                🎤 Voice chat available — click the microphone to speak
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -173,6 +307,22 @@ export function TwinChat({ twinId }: TwinChatProps) {
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{message.content}</p>
+                  
+                  {/* Audio playback button for assistant messages */}
+                  {message.role === "assistant" && message.audio_url && (
+                    <div className="mt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => playAudio(message.audio_url!)}
+                        disabled={playingAudio === message.audio_url}
+                        className="h-8 text-xs"
+                      >
+                        {playingAudio === message.audio_url ? "🔊 Playing..." : "🔊 Listen"}
+                      </Button>
+                    </div>
+                  )}
+                  
                   {message.role === "assistant" && message.sources && message.sources.length > 0 && (
                     <div className="mt-3 border-t border-white/10 pt-3">
                       <p className="mb-2 text-xs text-muted-foreground">
@@ -212,12 +362,27 @@ export function TwinChat({ twinId }: TwinChatProps) {
       {/* Input */}
       <div className="border-t pt-4">
         <div className="flex gap-2">
+          {voiceEnabled && (
+            <Button
+              variant={isRecording ? "destructive" : "outline"}
+              size="icon"
+              onClick={isRecording ? stopRecording : startRecording}
+              disabled={loading}
+              className="shrink-0"
+            >
+              {isRecording ? "⏹️" : "🎤"}
+            </Button>
+          )}
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={`Ask ${twinName} something...`}
-            disabled={loading}
+            placeholder={
+              isRecording
+                ? "Listening..."
+                : `Ask ${twinName} something...`
+            }
+            disabled={loading || isRecording}
           />
           <Button onClick={handleSend} disabled={loading || !input.trim()}>
             Send

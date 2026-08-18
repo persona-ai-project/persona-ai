@@ -32,6 +32,10 @@ interface Twin {
   knowledge_stats: Record<string, number>;
   source_stats: Record<string, number>;
   interview_stats: Record<string, number>;
+  voice_id: string;
+  voice_enabled: boolean;
+  voice_speed: number;
+  voice_pitch: number;
 }
 
 interface Source {
@@ -59,11 +63,20 @@ export function TwinDetail({ twinId }: TwinDetailProps) {
   const [sources, setSources] = useState<Source[]>([]);
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [voiceConfig, setVoiceConfig] = useState({
+    voice_id: "en_US-lessac-medium",
+    voice_enabled: true,
+    voice_speed: 1.0,
+    voice_pitch: 1.0,
+  });
+  const [voices, setVoices] = useState<string[]>([]);
 
   useEffect(() => {
     fetchTwin();
     fetchSources();
     fetchInterviews();
+    fetchVoiceConfig();
+    fetchVoices();
   }, [twinId]);
 
   const fetchTwin = async () => {
@@ -110,6 +123,75 @@ export function TwinDetail({ twinId }: TwinDetailProps) {
       console.error("Failed to fetch interviews:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchVoiceConfig = async () => {
+    try {
+      const token = localStorage.getItem("access_token") || "";
+      const res = await fetch(`${API_URL}/twins/${twinId}/voice/config`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setVoiceConfig(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch voice config:", error);
+    }
+  };
+
+  const fetchVoices = async () => {
+    try {
+      const res = await fetch(`${API_URL}/voice/voices`);
+      if (res.ok) {
+        const data = await res.json();
+        setVoices(data.voices || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch voices:", error);
+    }
+  };
+
+  const updateVoiceConfig = async (updates: Partial<typeof voiceConfig>) => {
+    try {
+      const token = localStorage.getItem("access_token") || "";
+      const res = await fetch(`${API_URL}/twins/${twinId}/voice/config`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(updates),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setVoiceConfig(data);
+      }
+    } catch (error) {
+      console.error("Failed to update voice config:", error);
+    }
+  };
+
+  const testVoice = async () => {
+    try {
+      const token = localStorage.getItem("access_token") || "";
+      const res = await fetch(
+        `${API_URL}/twins/${twinId}/voice/synthesise?text=Hello%20I%20am%20${encodeURIComponent(twin?.name || "twin")}`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) {
+          const audio = new Audio(data.url);
+          audio.play();
+        }
+      }
+    } catch (error) {
+      console.error("Failed to test voice:", error);
     }
   };
 
@@ -230,6 +312,7 @@ export function TwinDetail({ twinId }: TwinDetailProps) {
           <TabsTrigger value="sources">Sources ({sources.length})</TabsTrigger>
           <TabsTrigger value="knowledge">Knowledge ({getTotalKnowledge()})</TabsTrigger>
           <TabsTrigger value="interviews">Interviews ({interviews.length})</TabsTrigger>
+          <TabsTrigger value="voice">Voice</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sources" className="mt-4">
@@ -354,6 +437,100 @@ export function TwinDetail({ twinId }: TwinDetailProps) {
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Voice Tab */}
+      <Tabs defaultValue="voice" className="w-full">
+        <TabsList>
+          <TabsTrigger value="voice">Voice Configuration</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="voice" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Voice Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Enable/Disable */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-white">Enable Voice</p>
+                  <p className="text-sm text-muted-foreground">
+                    Allow this twin to speak and listen
+                  </p>
+                </div>
+                <Button
+                  variant={voiceConfig.voice_enabled ? "default" : "outline"}
+                  onClick={() => updateVoiceConfig({ voice_enabled: !voiceConfig.voice_enabled })}
+                >
+                  {voiceConfig.voice_enabled ? "Enabled" : "Disabled"}
+                </Button>
+              </div>
+
+              {/* Voice Selection */}
+              <div className="space-y-2">
+                <p className="font-medium text-white">Voice Model</p>
+                <select
+                  value={voiceConfig.voice_id}
+                  onChange={(e) => updateVoiceConfig({ voice_id: e.target.value })}
+                  className="w-full rounded-md border bg-surface px-3 py-2 text-white"
+                  disabled={!voiceConfig.voice_enabled}
+                >
+                  {voices.map((voice) => (
+                    <option key={voice} value={voice}>
+                      {voice}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Speed */}
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <p className="font-medium text-white">Speed</p>
+                  <span className="text-sm text-muted-foreground">{voiceConfig.voice_speed}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.1"
+                  value={voiceConfig.voice_speed}
+                  onChange={(e) => updateVoiceConfig({ voice_speed: parseFloat(e.target.value) })}
+                  className="w-full"
+                  disabled={!voiceConfig.voice_enabled}
+                />
+              </div>
+
+              {/* Pitch */}
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <p className="font-medium text-white">Pitch</p>
+                  <span className="text-sm text-muted-foreground">{voiceConfig.voice_pitch}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.1"
+                  value={voiceConfig.voice_pitch}
+                  onChange={(e) => updateVoiceConfig({ voice_pitch: parseFloat(e.target.value) })}
+                  className="w-full"
+                  disabled={!voiceConfig.voice_enabled}
+                />
+              </div>
+
+              {/* Test Button */}
+              <Button
+                onClick={testVoice}
+                disabled={!voiceConfig.voice_enabled}
+                className="w-full"
+              >
+                🔊 Test Voice
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

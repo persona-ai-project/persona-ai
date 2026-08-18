@@ -522,3 +522,83 @@ def get_public_twin(slug: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/public")
+def list_public_twins(
+    category: str | None = None,
+    search: str | None = None,
+    sort: str = "popular",
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+):
+    """List public twins (no auth required)."""
+    try:
+        with _engine.connect() as conn:
+            query = """
+                SELECT t.id, t.name, t.slug, t.tagline, t.bio, t.avatar_url,
+                       t.verification_level, t.total_chats, t.avg_fidelity,
+                       t.created_at, tc.name as category_name
+                FROM twins t
+                LEFT JOIN twin_categories tc ON t.category_id = tc.id
+                WHERE t.visibility = 'public' AND t.status = 'active' AND t.is_active = true
+            """
+            params = {"limit": limit, "offset": offset}
+
+            if category:
+                query += " AND tc.slug = :category"
+                params["category"] = category
+
+            if search:
+                query += " AND (t.name ILIKE :search OR t.tagline ILIKE :search)"
+                params["search"] = f"%{search}%"
+
+            # Sorting
+            if sort == "popular":
+                query += " ORDER BY t.total_chats DESC"
+            elif sort == "newest":
+                query += " ORDER BY t.created_at DESC"
+            elif sort == "rating":
+                query += " ORDER BY t.avg_fidelity DESC NULLS LAST"
+            else:
+                query += " ORDER BY t.total_chats DESC"
+
+            query += " LIMIT :limit OFFSET :offset"
+
+            rows = conn.execute(text(query), params).fetchall()
+
+            # Get total count
+            count_query = """
+                SELECT COUNT(*) FROM twins t
+                LEFT JOIN twin_categories tc ON t.category_id = tc.id
+                WHERE t.visibility = 'public' AND t.status = 'active' AND t.is_active = true
+            """
+            count_params = {}
+            if category:
+                count_query += " AND tc.slug = :category"
+                count_params["category"] = category
+            if search:
+                count_query += " AND (t.name ILIKE :search OR t.tagline ILIKE :search)"
+                count_params["search"] = f"%{search}%"
+
+            total = conn.execute(text(count_query), count_params).scalar()
+
+            twins = []
+            for r in rows:
+                twins.append({
+                    "id": str(r[0]),
+                    "name": r[1],
+                    "slug": r[2],
+                    "tagline": r[3],
+                    "bio": r[4][:200] if r[4] else None,
+                    "avatar_url": r[5],
+                    "verification_level": r[6],
+                    "total_chats": r[7],
+                    "avg_fidelity": r[8],
+                    "created_at": str(r[9]),
+                    "category_name": r[10],
+                })
+
+            return {"twins": twins, "total": total, "limit": limit, "offset": offset}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

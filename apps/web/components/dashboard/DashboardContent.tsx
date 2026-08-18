@@ -15,6 +15,7 @@ import { API_URL } from "@/lib/config";
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/owner", label: "My Twins" },
+  { href: "/directory", label: "Directory" },
   { href: "/chat", label: "Chat" },
   { href: "/onboarding", label: "Onboarding" },
 ] as const;

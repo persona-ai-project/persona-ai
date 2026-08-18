@@ -607,3 +607,94 @@ def twin_chat_feedback(
         return {"message": "Feedback submitted", "rating": body.rating}
     finally:
         db.close()
+
+
+@router.post("/public/{slug}/chat", response_model=TwinChatResponse)
+def public_twin_chat(
+    slug: str,
+    body: TwinChatRequest,
+):
+    """Chat with a public twin (no auth required)."""
+    # Check for prompt injection
+    if _detect_injection(body.message):
+        return TwinChatResponse(
+            reply="I appreciate your curiosity, but I need to stay true to who I am. Let's keep our conversation genuine. What would you like to know about me?",
+            sources=[],
+            knowledge_used=0,
+            confidence=1.0,
+            is_grounded=True,
+            uncertainty_detected=False,
+        )
+
+    engine = create_engine(DATABASE_URL)
+    db = sessionmaker(bind=engine)()
+    try:
+        # Get twin by slug
+        twin_row = db.execute(
+            text("""SELECT id, owner_id, name, status, visibility, personality_config, 
+                           boundaries, knowledge_anchors, verification_level
+                    FROM twins 
+                    WHERE slug = :slug AND visibility = 'public' AND status = 'active' AND is_active = true"""),
+            {"slug": slug}
+        ).fetchone()
+
+        if not twin_row:
+            raise HTTPException(status_code=404, detail="Twin not found")
+
+        twin = {
+            "id": str(twin_row[0]),
+            "owner_id": str(twin_row[1]),
+            "name": twin_row[2],
+            "status": twin_row[3],
+            "visibility": twin_row[4],
+            "personality_config": twin_row[5],
+            "boundaries": twin_row[6],
+            "knowledge_anchors": twin_row[7],
+            "verification_level": twin_row[8],
+        }
+
+        # Load knowledge
+        knowledge_chunks = _load_twin_knowledge(db, twin["id"], body.message, body.max_knowledge_items)
+        knowledge_items = _load_knowledge_items_from_db(db, twin["id"], body.max_knowledge_items)
+
+        # Build system prompt
+        system_prompt = _build_system_prompt(twin, knowledge_chunks, knowledge_items)
+
+        # Build messages
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.append({"role": "user", "content": body.message})
+
+        # Generate response
+        from llm.router import chat_completion
+        response = chat_completion(messages, max_tokens=1024)
+
+        # Analyze response
+        uncertainty = _detect_uncertainty(response)
+        confidence = _calculate_confidence(knowledge_chunks, knowledge_items)
+        grounded = _is_grounded(response, knowledge_chunks, knowledge_items)
+        sources = _extract_sources(knowledge_chunks) if body.include_sources else []
+
+        # Log access (no user_id for anonymous)
+        _log_access(db, twin["id"], None, "public_chat")
+
+        # Update twin stats
+        db.execute(
+            text("""UPDATE twins 
+                   SET total_chats = total_chats + 1, total_messages = total_messages + 2,
+                       updated_at = :now
+                   WHERE id = :id"""),
+            {"id": twin["id"], "now": datetime.now(timezone.utc)}
+        )
+        db.commit()
+
+        return TwinChatResponse(
+            reply=response,
+            message_id=None,
+            sources=sources,
+            knowledge_used=len(knowledge_chunks) + len(knowledge_items),
+            confidence=confidence,
+            is_grounded=grounded,
+            uncertainty_detected=uncertainty,
+        )
+    finally:
+        db.close()

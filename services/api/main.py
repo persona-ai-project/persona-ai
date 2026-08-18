@@ -117,6 +117,7 @@ from routers.subscriptions import router as subscriptions_router
 from routers.analytics import router as analytics_router
 from routers.twin_voice import router as twin_voice_router
 from routers.enterprise import router as enterprise_router
+from routers.health import router as health_router
 
 app.include_router(chat_router)
 app.include_router(questions_router)
@@ -134,6 +135,20 @@ app.include_router(subscriptions_router)
 app.include_router(analytics_router)
 app.include_router(twin_voice_router)
 app.include_router(enterprise_router)
+app.include_router(health_router)
+
+# Add security middleware
+try:
+    from middleware.security import (
+        SecurityHeadersMiddleware,
+        RequestTrackingMiddleware,
+        RateLimitMiddleware,
+    )
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(RequestTrackingMiddleware)
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=120)
+except Exception as e:
+    print(f"Warning: Could not add security middleware: {e}")
 
 
 @app.get("/healthz")

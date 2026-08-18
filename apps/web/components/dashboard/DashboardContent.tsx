@@ -19,6 +19,7 @@ const NAV_LINKS = [
   { href: "/chat", label: "Chat" },
   { href: "/analytics", label: "Analytics" },
   { href: "/subscription", label: "Subscription" },
+  { href: "/api", label: "API" },
   { href: "/onboarding", label: "Onboarding" },
 ] as const;
 

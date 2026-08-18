@@ -122,38 +122,3 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.requests[client_ip].append(current_time)
         
         return await call_next(request)
-
-
-class CORSMiddleware:
-    """Enhanced CORS middleware with logging."""
-    
-    def __init__(
-        self,
-        app,
-        allow_origins: list[str] = None,
-        allow_methods: list[str] = None,
-        allow_headers: list[str] = None,
-        allow_credentials: bool = True,
-    ):
-        self.app = app
-        self.allow_origins = allow_origins or ["*"]
-        self.allow_methods = allow_methods or ["*"]
-        self.allow_headers = allow_headers or ["*"]
-        self.allow_credentials = allow_credentials
-    
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
-            return await self.app(scope, receive, send)
-        
-        # Handle preflight
-        if scope["method"] == "OPTIONS":
-            response = Response(headers={
-                "Access-Control-Allow-Origin": self.allow_origins[0] if len(self.allow_origins) == 1 else "*",
-                "Access-Control-Allow-Methods": ", ".join(self.allow_methods),
-                "Access-Control-Allow-Headers": ", ".join(self.allow_headers),
-                "Access-Control-Allow-Credentials": "true" if self.allow_credentials else "false",
-                "Access-Control-Max-Age": "86400",
-            })
-            return response(scope, receive, send)
-        
-        return await self.app(scope, receive, send)

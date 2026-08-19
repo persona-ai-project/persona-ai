@@ -503,7 +503,8 @@ async def twin_chat_stream(
     # Check for prompt injection
     if _detect_injection(body.message):
         async def injection_response():
-            yield f"data: {json.dumps({'type': 'token', 'content': 'I appreciate your curiosity, but I need to stay true to who I am. Let\'s keep our conversation genuine. What would you like to know about me?'})}\n\n"
+            msg = "I appreciate your curiosity, but I need to stay true to who I am. Let's keep our conversation genuine. What would you like to know about me?"
+            yield f"data: {json.dumps({'type': 'token', 'content': msg})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return StreamingResponse(injection_response(), media_type="text/event-stream")
 

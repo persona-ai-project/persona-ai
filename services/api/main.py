@@ -98,7 +98,8 @@ _engine = None
 def get_engine():
     global _engine
     if _engine is None:
-        _engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 5}, pool_pre_ping=True)
+        _connect_args = {"connect_timeout": 5} if DATABASE_URL.startswith("postgresql") else {}
+        _engine = create_engine(DATABASE_URL, connect_args=_connect_args, pool_pre_ping=True)
     return _engine
 
 

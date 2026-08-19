@@ -17,7 +17,8 @@ JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "72"))
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
-_engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 5}, pool_pre_ping=True)
+_connect_args = {"connect_timeout": 5} if DATABASE_URL.startswith("postgresql") else {}
+_engine = create_engine(DATABASE_URL, connect_args=_connect_args, pool_pre_ping=True)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

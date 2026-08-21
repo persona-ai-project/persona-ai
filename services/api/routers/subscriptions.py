@@ -123,7 +123,7 @@ def list_plans():
 @router.get("/me", response_model=SubscriptionResponse)
 def get_my_subscription(current_user: dict = Depends(get_current_user)):
     """Get current user's subscription."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -152,8 +152,8 @@ def get_my_subscription(current_user: dict = Depends(get_current_user)):
                 now = datetime.now(timezone.utc)
                 db.execute(
                     text("""INSERT INTO user_subscriptions 
-                        (id, user_id, plan_id, status, current_period_start, current_period_end, created_at)
-                        VALUES (:id, :uid, :pid, 'active', :now, :end, :created)"""),
+                        (id, user_id, plan_id, status, current_period_start, current_period_end, twins_used, messages_today, created_at, updated_at)
+                        VALUES (:id, :uid, :pid, 'active', :now, :end, 0, 0, :created, :now)"""),
                     {
                         "id": sub_id,
                         "uid": user_id,
@@ -208,7 +208,7 @@ def get_my_subscription(current_user: dict = Depends(get_current_user)):
 @router.get("/me/usage", response_model=UsageResponse)
 def get_my_usage(current_user: dict = Depends(get_current_user)):
     """Get current user's usage stats."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -275,7 +275,7 @@ def get_my_usage(current_user: dict = Depends(get_current_user)):
 @router.post("/change")
 def change_plan(body: ChangePlanRequest, current_user: dict = Depends(get_current_user)):
     """Change subscription plan (mock implementation)."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -311,8 +311,8 @@ def change_plan(body: ChangePlanRequest, current_user: dict = Depends(get_curren
         else:
             db.execute(
                 text("""INSERT INTO user_subscriptions 
-                    (id, user_id, plan_id, status, current_period_start, current_period_end, created_at)
-                    VALUES (:id, :uid, :pid, 'active', :now, :end, :created)"""),
+                    (id, user_id, plan_id, status, current_period_start, current_period_end, twins_used, messages_today, created_at, updated_at)
+                    VALUES (:id, :uid, :pid, 'active', :now, :end, 0, 0, :created, :now)"""),
                 {
                     "id": str(uuid.uuid4()),
                     "uid": user_id,

@@ -29,6 +29,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from core.security import get_current_user
+from core.ssrf import validate_url_safe
 from storage.client import upload_bytes, get_presigned_url, R2_INGEST_BUCKET
 
 ROOT_PATH = os.path.join(os.path.dirname(__file__), '..', '..')
@@ -147,19 +148,8 @@ def _detect_source_type(filename: str) -> tuple[str, str]:
 
 
 def _validate_url(url: str) -> str:
-    """Validate URL format."""
-    pattern = re.compile(
-        r'^https?://'
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'
-        r'localhost|'
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
-        r'(?::\d+)?'
-        r'(?:/?|[/?]\S+)$',
-        re.IGNORECASE
-    )
-    if not pattern.match(url):
-        raise HTTPException(status_code=400, detail=f"Invalid URL format: {url}")
-    return url
+    """Validate URL format and block SSRF."""
+    return validate_url_safe(url)
 
 
 def _parse_file(file_path: str, source_type: str) -> str:
@@ -345,6 +335,14 @@ def _process_source_background(
         _update_source_status(db, source_id, "ready", chunk_count=chunk_count)
         print(f"[twin_sources] Source {source_id}: completed ({chunk_count} chunks, {len(knowledge_items)} knowledge items)")
 
+        # Auto-activate twin if it now has knowledge
+        try:
+            from routers.twins import _auto_activate_twin
+            _auto_activate_twin(db, twin_id)
+            db.commit()
+        except Exception as e:
+            print(f"[twin_sources] Auto-activate warning: {e}")
+
     except Exception as e:
         error_msg = str(e)
         print(f"[twin_sources] Source {source_id}: FAILED — {error_msg}")
@@ -364,7 +362,7 @@ async def upload_source_file(
     current_user: dict = Depends(get_current_user),
 ):
     """Upload a file as a source for a twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -460,7 +458,7 @@ async def upload_source_whatsapp(
     current_user: dict = Depends(get_current_user),
 ):
     """Upload a WhatsApp export as a source for a twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     if not file.filename.endswith(".txt"):
         raise HTTPException(status_code=400, detail="WhatsApp export must be a .txt file")
@@ -558,7 +556,7 @@ async def ingest_source_url(
     current_user: dict = Depends(get_current_user),
 ):
     """Ingest a URL as a source for a twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
     _validate_url(url)
 
     engine = create_engine(DATABASE_URL)
@@ -629,7 +627,7 @@ def list_sources(
     offset: int = Query(0, ge=0),
 ):
     """List all sources for a twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -690,7 +688,7 @@ def get_source(
     current_user: dict = Depends(get_current_user),
 ):
     """Get source detail."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -735,7 +733,7 @@ def delete_source(
     current_user: dict = Depends(get_current_user),
 ):
     """Delete a source and its associated data."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -784,7 +782,7 @@ async def reprocess_source(
     current_user: dict = Depends(get_current_user),
 ):
     """Reprocess a failed source."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()

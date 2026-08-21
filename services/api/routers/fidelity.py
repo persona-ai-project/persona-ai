@@ -129,7 +129,7 @@ def evaluate_response(
     current_user: dict = Depends(get_current_user),
 ):
     """Evaluate a single twin response for fidelity."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -183,7 +183,7 @@ def evaluate_batch(
     current_user: dict = Depends(get_current_user),
 ):
     """Evaluate multiple twin responses."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -236,7 +236,7 @@ def get_fidelity_summary(
     current_user: dict = Depends(get_current_user),
 ):
     """Get aggregate fidelity scores for a twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -309,7 +309,7 @@ def get_fidelity_history(
     limit: int = Query(20, ge=1, le=100),
 ):
     """Get recent evaluation history for a twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -361,7 +361,7 @@ def evaluate_last_chat(
     current_user: dict = Depends(get_current_user),
 ):
     """Evaluate the last chat response from a twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()

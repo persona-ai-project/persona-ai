@@ -89,13 +89,6 @@ def upgrade() -> None:
     op.create_index("ix_webhook_deliveries_webhook_id", "webhook_deliveries", ["webhook_id"])
     op.create_index("ix_webhook_deliveries_status", "webhook_deliveries", ["status"])
     
-    # Enterprise features on subscriptions
-    op.add_column("subscriptions", sa.Column("api_access_enabled", sa.Boolean(), server_default="false"))
-    op.add_column("subscriptions", sa.Column("api_rate_limit", sa.Integer(), server_default="0"))
-    op.add_column("subscriptions", sa.Column("webhook_limit", sa.Integer(), server_default="0"))
-    op.add_column("subscriptions", sa.Column("dedicated_support", sa.Boolean(), server_default="false"))
-    op.add_column("subscriptions", sa.Column("custom_models", sa.Boolean(), server_default="false"))
-    op.add_column("subscriptions", sa.Column("sla_guarantee", sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
@@ -103,9 +96,3 @@ def downgrade() -> None:
     op.drop_table("webhooks")
     op.drop_table("api_usage_logs")
     op.drop_table("api_keys")
-    op.drop_column("subscriptions", "sla_guarantee")
-    op.drop_column("subscriptions", "custom_models")
-    op.drop_column("subscriptions", "dedicated_support")
-    op.drop_column("subscriptions", "webhook_limit")
-    op.drop_column("subscriptions", "api_rate_limit")
-    op.drop_column("subscriptions", "api_access_enabled")

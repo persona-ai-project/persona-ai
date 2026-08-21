@@ -18,6 +18,21 @@ _engine = create_engine(DATABASE_URL)
 router = APIRouter(prefix="/twins", tags=["twins"])
 
 
+def _auto_activate_twin(conn, twin_id: str):
+    """Auto-activate a twin if it has knowledge items. Called after interview/source ingestion."""
+    count = conn.execute(
+        text("""SELECT COUNT(*) FROM knowledge_items
+                WHERE twin_id = :tid AND is_active = true"""),
+        {"tid": twin_id}
+    ).scalar()
+    if count and count > 0:
+        conn.execute(
+            text("""UPDATE twins SET status = 'active', updated_at = :now
+                    WHERE id = :tid AND status = 'draft'"""),
+            {"tid": twin_id, "now": datetime.now(timezone.utc)}
+        )
+
+
 def _slugify(name: str) -> str:
     slug = re.sub(r'[^\w\s-]', '', name.lower())
     slug = re.sub(r'[\s_]+', '-', slug)
@@ -99,12 +114,12 @@ def _check_twin_limit(conn, user_id: str):
 
 @router.post("", response_model=TwinResponse)
 def create_twin(twin: TwinCreate, current_user: dict = Depends(get_current_user)):
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
     
     try:
         with _engine.connect() as conn:
-            # Check twin limit
-            _check_twin_limit(conn, user_id)
+            # Check twin limit (disabled for now — unlimited twins)
+            # _check_twin_limit(conn, user_id)
             
             # Generate slug
             slug = _slugify(twin.name)
@@ -202,7 +217,7 @@ def list_twins(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
     
     try:
         with _engine.connect() as conn:
@@ -256,7 +271,7 @@ def list_twins(
 
 @router.get("/{twin_id}")
 def get_twin(twin_id: str, current_user: dict = Depends(get_current_user)):
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
     
     try:
         with _engine.connect() as conn:
@@ -298,32 +313,34 @@ def get_twin(twin_id: str, current_user: dict = Depends(get_current_user)):
                 {"tid": twin_id}
             ).fetchall()
             
+            # Use column names from the result proxy
+            cols = row._mapping
             return {
-                "id": str(row[0]),
-                "owner_id": str(row[1]),
-                "category_id": str(row[2]) if row[2] else None,
-                "name": row[3],
-                "slug": row[4],
-                "tagline": row[5],
-                "bio": row[6],
-                "avatar_url": row[7],
-                "cover_url": row[8],
-                "is_public_figure": row[9],
-                "public_figure_name": row[10],
-                "verification_level": row[11],
-                "personality_config": row[12],
-                "boundaries": row[13],
-                "knowledge_anchors": row[14],
-                "status": row[15],
-                "visibility": row[16],
-                "total_chats": row[17],
-                "total_messages": row[18],
-                "avg_fidelity": row[19],
-                "metadata": row[20],
-                "created_at": str(row[21]),
-                "updated_at": str(row[22]),
-                "is_active": row[23],
-                "category_name": row[24] if len(row) > 24 else None,
+                "id": str(cols["id"]),
+                "owner_id": str(cols["owner_id"]),
+                "category_id": str(cols["category_id"]) if cols.get("category_id") else None,
+                "name": cols["name"],
+                "slug": cols["slug"],
+                "tagline": cols.get("tagline"),
+                "bio": cols.get("bio"),
+                "avatar_url": cols.get("avatar_url"),
+                "cover_url": cols.get("cover_url"),
+                "is_public_figure": cols.get("is_public_figure", False),
+                "public_figure_name": cols.get("public_figure_name"),
+                "verification_level": cols.get("verification_level", "unverified"),
+                "personality_config": cols.get("personality_config"),
+                "boundaries": cols.get("boundaries"),
+                "knowledge_anchors": cols.get("knowledge_anchors"),
+                "status": cols.get("status", "draft"),
+                "visibility": cols.get("visibility", "private"),
+                "total_chats": cols.get("total_chats", 0),
+                "total_messages": cols.get("total_messages", 0),
+                "avg_fidelity": cols.get("avg_fidelity"),
+                "metadata": cols.get("metadata"),
+                "created_at": str(cols["created_at"]),
+                "updated_at": str(cols["updated_at"]),
+                "is_active": cols.get("is_active", True),
+                "category_name": cols.get("category_name"),
                 "knowledge_stats": {r[0]: r[1] for r in knowledge_stats},
                 "source_stats": {r[0]: r[1] for r in source_stats},
                 "interview_stats": {r[0]: r[1] for r in interview_stats},
@@ -336,7 +353,7 @@ def get_twin(twin_id: str, current_user: dict = Depends(get_current_user)):
 
 @router.patch("/{twin_id}", response_model=TwinResponse)
 def update_twin(twin_id: str, update: TwinUpdate, current_user: dict = Depends(get_current_user)):
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
     
     try:
         with _engine.connect() as conn:
@@ -421,7 +438,7 @@ def update_twin(twin_id: str, update: TwinUpdate, current_user: dict = Depends(g
 
 @router.delete("/{twin_id}")
 def delete_twin(twin_id: str, current_user: dict = Depends(get_current_user)):
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
     
     try:
         with _engine.connect() as conn:

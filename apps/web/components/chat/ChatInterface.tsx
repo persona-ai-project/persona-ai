@@ -1,25 +1,18 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Brain, Send } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ChatBubble, type ChatMessage } from "@/components/chat/ChatBubble";
 import { MemoryPanel } from "@/components/chat/MemoryPanel";
 import { VoiceButton } from "@/components/chat/VoiceButton";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { NavBar } from "@/components/layout/NavBar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import { API_URL } from "@/lib/config";
-
-const NAV_LINKS = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/chat", label: "Chat" },
-  { href: "/onboarding", label: "Onboarding" },
-] as const;
 
 const INITIAL_MESSAGES: ChatMessage[] = [
   {
@@ -64,7 +57,6 @@ function TypingIndicator() {
 }
 
 export function ChatInterface() {
-  const pathname = usePathname();
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -211,60 +203,10 @@ export function ChatInterface() {
   };
 
   return (
+    <AuthGuard>
     <div className="flex h-dvh flex-col bg-background">
       {/* Navbar */}
-      <header className="sticky top-0 z-10 shrink-0 border-b border-border bg-background/95 backdrop-blur-sm">
-        <div className="relative mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-          <Link
-            href="/"
-            className="text-lg font-semibold tracking-tight text-primary sm:text-xl"
-          >
-            PersonaAI
-          </Link>
-
-          <h1 className="absolute left-1/2 hidden -translate-x-1/2 text-sm font-medium text-foreground sm:block sm:text-base">
-            Your AI Twin
-          </h1>
-
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="lg:hidden"
-              aria-label={showMemoryPanel ? "Hide memory panel" : "Show memory panel"}
-              onClick={() => setShowMemoryPanel((prev) => !prev)}
-            >
-              <Brain className="size-4 text-primary" />
-            </Button>
-            <Avatar size="sm">
-              <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
-                U
-              </AvatarFallback>
-            </Avatar>
-          </div>
-        </div>
-
-        <nav className="mx-auto flex max-w-7xl items-center justify-center gap-1 border-t border-border px-4 py-2 sm:gap-6 sm:px-6">
-          {NAV_LINKS.map((link) => {
-            const isActive = pathname === link.href;
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-primary/15 text-primary"
-                    : "text-muted-foreground hover:bg-white/5 hover:text-white"
-                )}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </header>
+      <NavBar title="Your AI Twin" initials="U" />
 
       {/* Main content */}
       <div className="relative flex min-h-0 flex-1">
@@ -295,7 +237,7 @@ export function ChatInterface() {
                 disabled={isTyping || isStreaming}
                 className="h-10 flex-1 bg-surface"
               />
-              <VoiceButton />
+              <VoiceButton onTranscription={(text) => setInput((prev) => prev + text)} />
               <Button
                 type="button"
                 size="icon"
@@ -339,5 +281,6 @@ export function ChatInterface() {
         </AnimatePresence>
       </div>
     </div>
+    </AuthGuard>
   );
 }

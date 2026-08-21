@@ -21,6 +21,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
 from core.security import get_current_user
 
@@ -90,14 +91,7 @@ class ChatFeedback(BaseModel):
 
 # ── Helpers ─────────────────────────────────────────────────────────────────────
 
-def _get_db():
-    engine = create_engine(DATABASE_URL)
-    SessionLocal = sessionmaker(bind=engine)
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+_engine = create_engine(DATABASE_URL)
 
 
 def _verify_twin_access(conn, twin_id: str, user_id: str = None, public: bool = False):
@@ -105,7 +99,8 @@ def _verify_twin_access(conn, twin_id: str, user_id: str = None, public: bool = 
     row = conn.execute(
         text("""SELECT id, owner_id, name, status, visibility, personality_config, 
                        boundaries, knowledge_anchors, verification_level,
-                       languages, default_language, auto_detect_language
+                       languages, default_language, auto_detect_language,
+                       is_public_figure, public_figure_name
                 FROM twins 
                 WHERE id = :id AND is_active = true"""),
         {"id": twin_id}
@@ -121,8 +116,40 @@ def _verify_twin_access(conn, twin_id: str, user_id: str = None, public: bool = 
         raise HTTPException(status_code=403, detail="Twin is private")
 
     if row[4] == "unlisted" and not public and (not user_id or str(row[1]) != user_id):
-        # Allow access if user is explicitly requesting
         pass
+
+    # Parse JSONB fields
+    personality = row[5]
+    if isinstance(personality, str):
+        import json
+        try:
+            personality = json.loads(personality)
+        except (json.JSONDecodeError, TypeError):
+            personality = None
+
+    boundaries = row[6]
+    if isinstance(boundaries, str):
+        import json
+        try:
+            boundaries = json.loads(boundaries)
+        except (json.JSONDecodeError, TypeError):
+            boundaries = None
+
+    knowledge_anchors = row[7]
+    if isinstance(knowledge_anchors, str):
+        import json
+        try:
+            knowledge_anchors = json.loads(knowledge_anchors)
+        except (json.JSONDecodeError, TypeError):
+            knowledge_anchors = None
+
+    languages = row[9]
+    if isinstance(languages, str):
+        import json
+        try:
+            languages = json.loads(languages)
+        except (json.JSONDecodeError, TypeError):
+            languages = ["en"]
 
     return {
         "id": str(row[0]),
@@ -130,13 +157,15 @@ def _verify_twin_access(conn, twin_id: str, user_id: str = None, public: bool = 
         "name": row[2],
         "status": row[3],
         "visibility": row[4],
-        "personality_config": row[5],
-        "boundaries": row[6],
-        "knowledge_anchors": row[7],
+        "personality_config": personality,
+        "boundaries": boundaries,
+        "knowledge_anchors": knowledge_anchors,
         "verification_level": row[8],
-        "languages": row[9] or ["en"],
+        "languages": languages or ["en"],
         "default_language": row[10] or "en",
         "auto_detect_language": row[11] if row[11] is not None else True,
+        "is_public_figure": row[12] or False,
+        "public_figure_name": row[13],
     }
 
 
@@ -197,7 +226,7 @@ def _load_twin_chat_history(conn, twin_id: str, user_id: str, limit: int = 10) -
     """Load chat history for a twin."""
     rows = conn.execute(
         text("""SELECT role, content FROM messages
-                WHERE user_id = :uid AND persona_id = :tid
+                WHERE user_id = :uid AND twin_id = :tid
                 ORDER BY created_at DESC LIMIT :limit"""),
         {"uid": user_id, "tid": twin_id, "limit": limit}
     ).fetchall()
@@ -211,72 +240,23 @@ def _build_system_prompt(
     knowledge_items: list[dict],
     user_language: str | None = None,
 ) -> str:
-    """Build the system prompt for twin response generation."""
-    name = twin["name"]
-    personality = twin.get("personality_config") or {}
-    boundaries = twin.get("boundaries") or {}
-    knowledge_anchors = twin.get("knowledge_anchors") or {}
-    twin_languages = twin.get("languages") or ["en"]
-    default_language = twin.get("default_language") or "en"
-    auto_detect = twin.get("auto_detect_language", True)
+    """Build the system prompt for twin response generation using the shared prompt builder."""
+    from services.ai.prompt_builder import build_twin_system_prompt
 
-    # Build personality section
-    personality_section = ""
-    if personality:
-        personality_section = f"\nYour personality traits:\n{json.dumps(personality, indent=2)}"
-
-    # Build boundaries section
-    boundaries_section = ""
-    if boundaries:
-        if isinstance(boundaries, list):
-            boundaries_section = "\n\nTopics you should NOT discuss or have limited knowledge about:\n" + "\n".join(f"- {b}" for b in boundaries)
-        elif isinstance(boundaries, dict):
-            boundaries_section = f"\n\nTopics you should NOT discuss:\n{json.dumps(boundaries, indent=2)}"
-
-    # Build knowledge anchors section
-    anchors_section = ""
-    if knowledge_anchors:
-        if isinstance(knowledge_anchors, list):
-            anchors_section = "\n\nCore facts about you (always include if relevant):\n" + "\n".join(f"- {a}" for a in knowledge_anchors)
-        elif isinstance(knowledge_anchors, dict):
-            anchors_section = f"\n\nCore facts about you:\n{json.dumps(knowledge_anchors, indent=2)}"
-
-    # Build knowledge section
-    knowledge_section = ""
-    if knowledge_chunks:
-        knowledge_section = "\n\nRelevant knowledge about you:\n"
-        for i, chunk in enumerate(knowledge_chunks, 1):
-            knowledge_section += f"{i}. {chunk['text'][:200]}...\n"
-
-    if knowledge_items:
-        knowledge_section += "\n\nStructured knowledge:\n"
-        for item in knowledge_items[:10]:
-            knowledge_section += f"- [{item['content_type']}] {item['content'][:150]}\n"
-
-    # Build language section
-    language_section = ""
-    if user_language and auto_detect:
-        from services.ai.language.detector import get_language_prompt_addition, SUPPORTED_LANGUAGES
-        language_section = "\n\n" + get_language_prompt_addition(user_language, twin_languages)
-    elif twin_languages and len(twin_languages) > 1:
-        lang_names = [SUPPORTED_LANGUAGES.get(l, {}).get("name", l) for l in twin_languages[:3]]
-        language_section = f"\n\nThis twin can respond in: {', '.join(lang_names)}. Match the user's language when possible."
-
-    return f"""You are {name}, a digital twin created from real information about a person.
-
-Your role is to respond as {name} would, based on the knowledge provided below.
-Be conversational, natural, and authentic. Respond in first person.
-
-IMPORTANT RULES:
-1. ONLY use information from the knowledge provided below
-2. If you don't know something based on the knowledge, say "I don't have that information" or "I'm not sure about that"
-3. NEVER make up facts or pretend to know something you don't
-4. When sharing specific information, you may reference your knowledge naturally
-5. Stay in character as {name} at all times
-6. If asked about topics in your boundaries, politely redirect or say you'd prefer not to discuss that
-7. Be warm, engaging, and authentic
-{personality_section}{boundaries_section}{anchors_section}{knowledge_section}{language_section}
-Remember: You are {name}. Respond as they would, with their knowledge and personality."""
+    return build_twin_system_prompt(
+        twin_name=twin["name"],
+        trust_level=twin.get("verification_level", "public"),
+        personality_config=twin.get("personality_config"),
+        boundaries=twin.get("boundaries"),
+        knowledge_anchors=twin.get("knowledge_anchors"),
+        knowledge_chunks=knowledge_chunks,
+        knowledge_items=knowledge_items,
+        user_language=user_language,
+        twin_languages=twin.get("languages"),
+        default_language=twin.get("default_language", "en"),
+        is_public_figure=twin.get("is_public_figure", False),
+        public_figure_name=twin.get("public_figure_name"),
+    )
 
 
 def _detect_uncertainty(response: str) -> bool:
@@ -300,8 +280,8 @@ def _detect_uncertainty(response: str) -> bool:
     return any(phrase in response_lower for phrase in uncertainty_phrases)
 
 
-def _extract_sources(knowledge_chunks: list[dict]) -> list[dict]:
-    """Extract unique sources from knowledge chunks."""
+def _extract_sources(knowledge_chunks: list[dict], knowledge_items: list[dict] = None) -> list[dict]:
+    """Extract unique sources from knowledge chunks and DB items."""
     sources = []
     seen = set()
 
@@ -312,8 +292,20 @@ def _extract_sources(knowledge_chunks: list[dict]) -> list[dict]:
             sources.append({
                 "source_id": source_id,
                 "snippet": chunk["text"][:100],
-                "relevance": chunk["score"],
+                "relevance": chunk.get("score", 0),
             })
+
+    if knowledge_items:
+        for item in knowledge_items:
+            source_id = item.get("source_id")
+            content = item.get("content", "")
+            if content and content not in seen:
+                seen.add(content)
+                sources.append({
+                    "source_id": source_id or "db",
+                    "snippet": content[:100],
+                    "relevance": item.get("confidence", 0.8),
+                })
 
     return sources
 
@@ -359,12 +351,12 @@ def _save_message(conn, twin_id: str, user_id: str, role: str, content: str):
     """Save a message to the database."""
     msg_id = str(uuid.uuid4())
     conn.execute(
-        text("""INSERT INTO messages (id, user_id, persona_id, role, content, created_at)
-                 VALUES (:id, :uid, :pid, :role, :content, :now)"""),
+        text("""INSERT INTO messages (id, user_id, twin_id, role, content, created_at)
+                 VALUES (:id, :uid, :tid, :role, :content, :now)"""),
         {
             "id": msg_id,
             "uid": user_id,
-            "pid": twin_id,
+            "tid": twin_id,
             "role": role,
             "content": content,
             "now": datetime.now(timezone.utc),
@@ -412,7 +404,7 @@ def twin_chat(
     current_user: dict = Depends(get_current_user),
 ):
     """Chat with a twin using knowledge-grounded responses."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     # Check for prompt injection
     if _detect_injection(body.message):
@@ -425,8 +417,7 @@ def twin_chat(
             uncertainty_detected=False,
         )
 
-    engine = create_engine(DATABASE_URL)
-    db = sessionmaker(bind=engine)()
+    db = sessionmaker(bind=_engine)()
     try:
         # Verify twin access
         twin = _verify_twin_access(db, twin_id, user_id)
@@ -434,7 +425,7 @@ def twin_chat(
         # Detect user language
         from services.ai.language.detector import detect_language
         detected_lang = detect_language(body.message)
-        user_language = detected_lang["code"] if detected_lang["confidence"] > 0.5 else None
+        user_language = detected_lang["code"] if detected_lang["confidence"] >= 0.5 else None
 
         # Load knowledge
         knowledge_chunks = _load_twin_knowledge(db, twin_id, body.message, body.max_knowledge_items)
@@ -444,7 +435,7 @@ def twin_chat(
         history = _load_twin_chat_history(db, twin_id, user_id)
 
         # Build system prompt
-        system_prompt = _build_system_prompt(twin, knowledge_chunks, knowledge_items)
+        system_prompt = _build_system_prompt(twin, knowledge_chunks, knowledge_items, user_language=user_language)
 
         # Build messages
         messages = [{"role": "system", "content": system_prompt}]
@@ -459,7 +450,7 @@ def twin_chat(
         uncertainty = _detect_uncertainty(response)
         confidence = _calculate_confidence(knowledge_chunks, knowledge_items)
         grounded = _is_grounded(response, knowledge_chunks, knowledge_items)
-        sources = _extract_sources(knowledge_chunks) if body.include_sources else []
+        sources = _extract_sources(knowledge_chunks, knowledge_items) if body.include_sources else []
 
         # Save messages
         user_msg_id = _save_message(db, twin_id, user_id, "user", body.message)
@@ -498,7 +489,7 @@ async def twin_chat_stream(
     current_user: dict = Depends(get_current_user),
 ):
     """Chat with a twin using streaming responses."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     # Check for prompt injection
     if _detect_injection(body.message):
@@ -508,11 +499,15 @@ async def twin_chat_stream(
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return StreamingResponse(injection_response(), media_type="text/event-stream")
 
-    engine = create_engine(DATABASE_URL)
-    db = sessionmaker(bind=engine)()
+    db = sessionmaker(bind=_engine)()
     try:
         # Verify twin access
         twin = _verify_twin_access(db, twin_id, user_id)
+
+        # Detect user language
+        from services.ai.language.detector import detect_language
+        detected_lang = detect_language(body.message)
+        user_language = detected_lang["code"] if detected_lang["confidence"] >= 0.5 else None
 
         # Load knowledge
         knowledge_chunks = _load_twin_knowledge(db, twin_id, body.message, body.max_knowledge_items)
@@ -522,7 +517,7 @@ async def twin_chat_stream(
         history = _load_twin_chat_history(db, twin_id, user_id)
 
         # Build system prompt
-        system_prompt = _build_system_prompt(twin, knowledge_chunks, knowledge_items)
+        system_prompt = _build_system_prompt(twin, knowledge_chunks, knowledge_items, user_language=user_language)
 
         # Build messages
         messages = [{"role": "system", "content": system_prompt}]
@@ -536,33 +531,22 @@ async def twin_chat_stream(
         db.close()
 
     # Streaming response
-    import groq
-    client = groq.Groq(api_key=os.getenv("GROQ_API_KEY"))
+    from llm.router import chat_completion_stream
 
     async def event_generator():
         full_response = ""
         try:
-            stream = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=messages,
-                stream=True,
-                max_tokens=1024,
-                temperature=0.7,
-            )
-            for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    token = chunk.choices[0].delta.content
-                    full_response += token
-                    yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+            for token in chat_completion_stream(messages):
+                full_response += token
+                yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
 
             # Send metadata
-            sources = _extract_sources(knowledge_chunks) if body.include_sources else []
+            sources = _extract_sources(knowledge_chunks, knowledge_items) if body.include_sources else []
             yield f"data: {json.dumps({'type': 'metadata', 'sources': sources, 'knowledge_used': len(knowledge_chunks) + len(knowledge_items)})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
             # Save messages
-            engine = create_engine(DATABASE_URL)
-            db = sessionmaker(bind=engine)()
+            db = sessionmaker(bind=_engine)()
             try:
                 _save_message(db, twin_id, user_id, "user", body.message)
                 _save_message(db, twin_id, user_id, "assistant", full_response)
@@ -593,10 +577,9 @@ def twin_chat_feedback(
     current_user: dict = Depends(get_current_user),
 ):
     """Submit feedback for a twin's response."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
-    engine = create_engine(DATABASE_URL)
-    db = sessionmaker(bind=engine)()
+    db = sessionmaker(bind=_engine)()
     try:
         # Verify message exists and belongs to user
         msg = db.execute(
@@ -649,8 +632,7 @@ def public_twin_chat(
             uncertainty_detected=False,
         )
 
-    engine = create_engine(DATABASE_URL)
-    db = sessionmaker(bind=engine)()
+    db = sessionmaker(bind=_engine)()
     try:
         # Get twin by slug
         twin_row = db.execute(
@@ -680,8 +662,13 @@ def public_twin_chat(
         knowledge_chunks = _load_twin_knowledge(db, twin["id"], body.message, body.max_knowledge_items)
         knowledge_items = _load_knowledge_items_from_db(db, twin["id"], body.max_knowledge_items)
 
+        # Detect user language
+        from services.ai.language.detector import detect_language
+        detected_lang = detect_language(body.message)
+        user_language = detected_lang["code"] if detected_lang["confidence"] >= 0.5 else None
+
         # Build system prompt
-        system_prompt = _build_system_prompt(twin, knowledge_chunks, knowledge_items)
+        system_prompt = _build_system_prompt(twin, knowledge_chunks, knowledge_items, user_language=user_language)
 
         # Build messages
         messages = [{"role": "system", "content": system_prompt}]
@@ -695,7 +682,7 @@ def public_twin_chat(
         uncertainty = _detect_uncertainty(response)
         confidence = _calculate_confidence(knowledge_chunks, knowledge_items)
         grounded = _is_grounded(response, knowledge_chunks, knowledge_items)
-        sources = _extract_sources(knowledge_chunks) if body.include_sources else []
+        sources = _extract_sources(knowledge_chunks, knowledge_items) if body.include_sources else []
 
         # Log access (no user_id for anonymous)
         _log_access(db, twin["id"], None, "public_chat")

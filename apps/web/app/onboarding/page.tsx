@@ -1,10 +1,10 @@
-import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import InterviewOnboarding from "@/components/onboarding/InterviewOnboarding";
 
 export const metadata = {
-  title: "Onboarding | PersonaAI",
-  description: "Build your AI digital twin with PersonaAI onboarding",
+  title: "Build Your Twin | PersonaAI",
+  description: "Have a conversation with AI to build your digital twin",
 };
 
 export default function OnboardingPage() {
-  return <OnboardingWizard />;
+  return <InterviewOnboarding />;
 }

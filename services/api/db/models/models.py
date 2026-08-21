@@ -26,6 +26,8 @@ class User(Base):
     messages       = relationship("Message", back_populates="user")
     twins          = relationship("Twin", back_populates="owner")
     subscriptions  = relationship("UserSubscription", back_populates="user")
+    api_keys       = relationship("APIKey", back_populates="user")
+    webhooks       = relationship("Webhook", back_populates="user")
 
 
 class Persona(Base):
@@ -70,6 +72,7 @@ class Message(Base):
     id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id        = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     persona_id     = Column(UUID(as_uuid=True), ForeignKey("personas.id"), nullable=True)
+    twin_id        = Column(UUID(as_uuid=True), ForeignKey("twins.id", ondelete="CASCADE"), nullable=True)
     role           = Column(Text, nullable=False)   # "user" or "assistant"
     content        = Column(Text, nullable=False)
     created_at     = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
@@ -78,6 +81,7 @@ class Message(Base):
 
     __table_args__ = (
         Index("ix_messages_user_id", "user_id"),
+        Index("ix_messages_twin_id", "twin_id"),
         Index("ix_messages_created_at", "created_at"),
     )
 

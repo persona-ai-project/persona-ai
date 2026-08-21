@@ -19,10 +19,12 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, BackgroundTasks, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from core.security import get_current_user
+from core.ssrf import validate_url_safe
 
 # Path setup
 ROOT_PATH = os.path.join(os.path.dirname(__file__), '..', '..')
@@ -89,19 +91,8 @@ def _detect_source_type(filename: str) -> str:
 
 
 def _validate_url(url: str) -> str:
-    """Validate URL format."""
-    pattern = re.compile(
-        r'^https?://'
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'
-        r'localhost|'
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
-        r'(?::\d+)?'
-        r'(?:/?|[/?]\S+)$',
-        re.IGNORECASE
-    )
-    if not pattern.match(url):
-        raise HTTPException(status_code=400, detail=f"Invalid URL format: {url}")
-    return url
+    """Validate URL format and block SSRF."""
+    return validate_url_safe(url)
 
 
 def _get_job_or_404(db, job_id: str) -> dict:
@@ -140,7 +131,7 @@ def _get_job_or_404(db, job_id: str) -> dict:
 async def ingest_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    user_id: str = Form(...),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Upload a file for ingestion.
@@ -149,6 +140,7 @@ async def ingest_file(
     Returns 202 immediately with job_id.
     Poll GET /ingest/{job_id} for progress.
     """
+    user_id = current_user["user_id"]
     # Detect source type from extension
     source_type = _detect_source_type(file.filename)
 
@@ -203,8 +195,8 @@ async def ingest_file(
 async def ingest_whatsapp(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    user_id: str = Form(...),
     owner_name: str = Form(default=""),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Upload a WhatsApp exported .txt chat file.
@@ -212,6 +204,7 @@ async def ingest_whatsapp(
 
     Returns 202 immediately with job_id.
     """
+    user_id = current_user["user_id"]
     if not file.filename.endswith(".txt"):
         raise HTTPException(
             status_code=400,
@@ -271,7 +264,7 @@ async def ingest_whatsapp(
 async def ingest_url(
     background_tasks: BackgroundTasks,
     url: str,
-    user_id: str,
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Ingest a web page by URL.
@@ -279,6 +272,7 @@ async def ingest_url(
 
     Returns 202 immediately with job_id.
     """
+    user_id = current_user["user_id"]
     # Validate URL
     _validate_url(url)
 
@@ -330,7 +324,7 @@ def get_job_status(job_id: str):
 
 
 @router.delete("/source/{source_id}")
-def delete_source(source_id: str, user_id: str):
+def delete_source(source_id: str, current_user: dict = Depends(get_current_user)):
     """
     Delete all data for a source:
     1. Removes ingestion_jobs rows from Postgres
@@ -338,8 +332,8 @@ def delete_source(source_id: str, user_id: str):
 
     Args:
         source_id: The source key (R2 key or URL)
-        user_id:   UUID of the user who owns the data
     """
+    user_id = current_user["user_id"]
     # Delete from Qdrant first (P1's retriever)
     try:
         from services.ai.rag.retriever import delete as rag_delete

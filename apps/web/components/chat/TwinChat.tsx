@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { API_URL } from "@/lib/config";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { NavBar } from "@/components/layout/NavBar";
 
 interface TwinChatProps {
   twinId: string;
@@ -249,7 +251,10 @@ export function TwinChat({ twinId }: TwinChatProps) {
   };
 
   return (
-    <div className="flex h-[calc(100dvh-200px)] flex-col">
+    <AuthGuard>
+      <NavBar />
+      <div className="container mx-auto py-8">
+      <div className="flex h-[calc(100dvh-200px)] flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 border-b pb-4">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
@@ -389,6 +394,8 @@ export function TwinChat({ twinId }: TwinChatProps) {
           </Button>
         </div>
       </div>
-    </div>
+      </div>
+      </div>
+    </AuthGuard>
   );
 }

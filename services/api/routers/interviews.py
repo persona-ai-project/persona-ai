@@ -117,6 +117,7 @@ Be inspiring. Help them articulate their vision.""",
 class InterviewStart(BaseModel):
     topic: str | None = None  # topic key or None for general
     opening_message: str | None = None  # optional custom opening
+    person_name: str | None = None  # user's real name — skip asking for it
 
 
 class InterviewMessage(BaseModel):
@@ -150,14 +151,7 @@ class InterviewSessionResponse(BaseModel):
 
 # ── Helpers ─────────────────────────────────────────────────────────────────────
 
-def _get_db():
-    engine = create_engine(DATABASE_URL)
-    SessionLocal = sessionmaker(bind=engine)
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+_engine = create_engine(DATABASE_URL)
 
 
 def _verify_twin_owner(conn, twin_id: str, user_id: str):
@@ -233,20 +227,30 @@ def _generate_follow_up(
         knowledge_context = f"\n\nExisting knowledge about {twin_name}:\n" + "\n".join(f"- {k[:100]}" for k in existing_knowledge[:10])
 
     # Build conversation for LLM
+    # Summarize what's been covered so far
+    covered = []
+    for msg in history:
+        if msg["role"] == "interviewee":
+            covered.append(msg["content"][:80])
+    covered_summary = ""
+    if covered:
+        covered_summary = "\n\nWhat they've shared so far:\n" + "\n".join(f"- {c}" for c in covered[-5:])
+
     messages = [
         {"role": "system", "content": f"""{system_prompt}
 
-You are interviewing someone to build a digital twin of {twin_name}.
+You are interviewing {twin_name} to build their digital twin.
 
-IMPORTANT RULES:
+CRITICAL RULES:
 1. Ask ONE question at a time
-2. Build on what they just shared - don't repeat topics
-3. Be conversational, not interrogative
-4. If they share something interesting, explore it before moving on
-5. After 5-8 exchanges, or when you have enough for this topic, say "Thank you, that's all I needed for this topic."
+2. Build naturally on what they just shared — follow their thread, don't jump topics
+3. Be warm and conversational, like chatting with a friend over coffee
+4. If they share something interesting or emotional, explore it — ask how it felt, what they learned
+5. NEVER ask for information they already gave (name, job, etc.)
+6. After 5-8 exchanges for this topic, say "Great, I've got a good picture of that. Let's move on."
+7. Your response should be just the question — no preamble, no "Great!" or "Interesting!" prefixes{covered_summary}
 
-Your follow-up should be a single question that naturally extends the conversation.
-Do NOT include any preamble or explanation. Just the question."""},
+Ask a follow-up that naturally continues the conversation."""},
     ]
 
     # Add conversation history
@@ -283,23 +287,25 @@ def _extract_knowledge(
     knowledge_types = topic_config.get("knowledge_types", ["fact", "opinion"])
 
     messages = [
-        {"role": "system", "content": f"""Extract knowledge items from this interview exchange.
+        {"role": "system", "content": f"""Extract ALL knowledge items from this interview exchange.
 Return a JSON array of knowledge items. Each item should have:
 - "content_type": one of {json.dumps(knowledge_types)}
-- "content": the knowledge as a clear statement (not a quote)
+- "content": the knowledge as a clear, specific statement (not a quote, not vague)
 - "confidence": 0.0 to 1.0 based on how clearly stated it is
 
 Rules:
-- Extract facts, opinions, preferences, memories, or skills
-- Each item should be a standalone, clear statement
-- Don't extract questions or vague statements
-- Maximum 5 items per exchange
+- Extract EVERY fact, opinion, preference, memory, skill, or belief mentioned
+- Be SPECIFIC — not "they have a job" but "works as a software engineer at Google"
+- Each item should be a standalone statement someone could understand without context
+- Don't extract questions or very vague statements
+- Maximum 8 items per exchange — be generous, extract more rather than less
 - Return ONLY the JSON array, no explanation
 
 Example:
 [
     {{"content_type": "fact", "content": "Grew up in Portland, Oregon", "confidence": 0.9}},
-    {{"content_type": "opinion", "content": "Believes remote work is better for productivity", "confidence": 0.8}}
+    {{"content_type": "opinion", "content": "Believes remote work is better for productivity", "confidence": 0.8}},
+    {{"content_type": "memory", "content": "First job was at a coffee shop at age 16", "confidence": 0.85}}
 ]"""},
         {"role": "user", "content": f"Interviewee said: {user_message}\n\nInterviewer asked: {interviewer_response}"}
     ]
@@ -325,7 +331,7 @@ Example:
             item["source_id"] = source_id
             item["metadata_"] = {"from_interview": session_id, "topic": topic}
 
-        return items[:5]  # Max 5 items
+        return items[:8]  # Max 8 items
     except Exception as e:
         print(f"[interviews] Knowledge extraction failed: {e}")
         return []
@@ -334,6 +340,9 @@ Example:
 def _save_knowledge_items(db, items: list[dict]):
     """Save extracted knowledge items to database."""
     for item in items:
+        metadata = item.get("metadata_")
+        if isinstance(metadata, dict):
+            metadata = json.dumps(metadata)
         db.execute(
             text("""INSERT INTO knowledge_items 
                 (id, twin_id, source_id, content_type, content, confidence, metadata, created_at, updated_at)
@@ -346,7 +355,7 @@ def _save_knowledge_items(db, items: list[dict]):
                 "content_type": item["content_type"],
                 "content": item["content"],
                 "confidence": item.get("confidence", 0.8),
-                "metadata": item.get("metadata_"),
+                "metadata": metadata,
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
             }
@@ -359,11 +368,10 @@ def _index_interview_chunks(user_id: str, twin_id: str, session_id: str, message
     from services.ai.rag.retriever import index as rag_index
 
     chunks = []
-    for msg in messages:
+    for idx, msg in enumerate(messages):
         if msg["role"] == "interviewer":
             continue
         # Find the corresponding interviewer question
-        idx = messages.index(msg)
         question = messages[idx - 1]["content"] if idx > 0 and messages[idx - 1]["role"] == "interviewer" else ""
 
         chunk_text = f"Q: {question}\nA: {msg['content']}"
@@ -394,11 +402,11 @@ def start_interview(
     current_user: dict = Depends(get_current_user),
 ):
     """Start a new interview session for a twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
     topic = body.topic if body else None
+    person_name = (body.person_name if body and body.person_name else None) or ""
 
-    engine = create_engine(DATABASE_URL)
-    db = sessionmaker(bind=engine)()
+    db = sessionmaker(bind=_engine)()
     try:
         _verify_twin_owner(db, twin_id, user_id)
         _check_interview_limit(db, twin_id, user_id)
@@ -443,14 +451,20 @@ def start_interview(
         opening = body.opening_message if body and body.opening_message else None
         if not opening:
             from llm.router import chat_completion
+
+            name_context = ""
+            if person_name:
+                name_context = f"\nThe person's name is {person_name}. DO NOT ask for their name — you already know it."
+
             messages = [
                 {"role": "system", "content": f"""You are starting an interview to learn about {twin_name} for their digital twin.
-Topic: {topic_name}
+Topic: {topic_name}{name_context}
 
 Rules:
-- Start with a warm, open-ended question
-- Make it easy to answer - not too broad or too narrow
-- Be conversational and friendly
+- Start with a warm, open-ended question about their background
+- DO NOT ask for their name — you already know it
+- Make it easy to answer — not too broad or too narrow
+- Be conversational and friendly, like talking to a friend
 - Just ask the question, no preamble"""},
                 {"role": "user", "content": f"Start the interview about {topic_name}."}
             ]
@@ -508,10 +522,9 @@ async def send_interview_message(
     current_user: dict = Depends(get_current_user),
 ):
     """Send a message in an interview and get a follow-up question."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
-    engine = create_engine(DATABASE_URL)
-    db = sessionmaker(bind=engine)()
+    db = sessionmaker(bind=_engine)()
     try:
         _verify_twin_owner(db, twin_id, user_id)
 
@@ -570,9 +583,16 @@ async def send_interview_message(
             user_message=body.message,
         )
 
-        # Check if interview should end
+        # Check if interview should end — only after 8+ exchanges, let the
+        # LLM explicitly signal completion (not fragile string matching)
         is_complete = False
-        if "that's all i needed" in follow_up.lower() or "thank you" in follow_up.lower():
+        questions_asked = session[3]
+        if questions_asked >= 8 and (
+            "that's all" in follow_up.lower()
+            or "we're done" in follow_up.lower()
+            or "interview is complete" in follow_up.lower()
+            or "that concludes" in follow_up.lower()
+        ):
             is_complete = True
 
         # Save follow-up
@@ -594,7 +614,7 @@ async def send_interview_message(
         knowledge_items = _extract_knowledge(
             twin_id=twin_id,
             session_id=session_id,
-            source_id=session_id,
+            source_id=None,
             user_message=body.message,
             interviewer_response=follow_up,
             topic=topic,
@@ -633,11 +653,17 @@ async def send_interview_message(
             }
         )
 
-        # Index interview chunks if complete
-        if is_complete:
-            all_messages = _get_interview_history(db, session_id)
-            all_messages.append({"role": "interviewer", "content": follow_up})
-            _index_interview_chunks(user_id, twin_id, session_id, all_messages)
+        # Always index interview chunks to Qdrant after each exchange
+        all_messages = _get_interview_history(db, session_id)
+        all_messages.append({"role": "interviewer", "content": follow_up})
+        _index_interview_chunks(user_id, twin_id, session_id, all_messages)
+
+        # Auto-activate twin if it now has knowledge
+        try:
+            from routers.twins import _auto_activate_twin
+            _auto_activate_twin(db, twin_id)
+        except Exception as e:
+            print(f"[interviews] Auto-activate warning: {e}")
 
         db.commit()
 
@@ -665,10 +691,9 @@ def list_interviews(
     offset: int = Query(0, ge=0),
 ):
     """List all interview sessions for a twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
-    engine = create_engine(DATABASE_URL)
-    db = sessionmaker(bind=engine)()
+    db = sessionmaker(bind=_engine)()
     try:
         _verify_twin_owner(db, twin_id, user_id)
 
@@ -723,10 +748,9 @@ def get_interview(
     current_user: dict = Depends(get_current_user),
 ):
     """Get interview session detail with messages."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
-    engine = create_engine(DATABASE_URL)
-    db = sessionmaker(bind=engine)()
+    db = sessionmaker(bind=_engine)()
     try:
         _verify_twin_owner(db, twin_id, user_id)
 
@@ -786,14 +810,13 @@ def end_interview(
     current_user: dict = Depends(get_current_user),
 ):
     """End/delete an interview session."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
-    engine = create_engine(DATABASE_URL)
-    db = sessionmaker(bind=engine)()
+    db = sessionmaker(bind=_engine)()
     try:
         _verify_twin_owner(db, twin_id, user_id)
 
-        # Verify session exists
+        # Get session
         session = db.execute(
             text("""SELECT id, status FROM interview_sessions
                     WHERE id = :id AND twin_id = :tid AND user_id = :uid"""),

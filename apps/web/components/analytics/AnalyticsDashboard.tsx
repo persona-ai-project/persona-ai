@@ -6,6 +6,8 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { NavBar } from "@/components/layout/NavBar";
 import {
   Select,
   SelectContent,
@@ -113,7 +115,10 @@ export function AnalyticsDashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <AuthGuard>
+    <div className="min-h-dvh bg-background">
+      <NavBar title="Analytics" />
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white">Analytics</h1>
@@ -339,5 +344,7 @@ export function AnalyticsDashboard() {
         </Card>
       </div>
     </div>
+    </div>
+    </AuthGuard>
   );
 }

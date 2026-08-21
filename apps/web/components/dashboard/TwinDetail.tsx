@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { API_URL } from "@/lib/config";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { NavBar } from "@/components/layout/NavBar";
 
 interface TwinDetailProps {
   twinId: string;
@@ -214,25 +216,33 @@ export function TwinDetail({ twinId }: TwinDetailProps) {
 
   if (loading) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
+      <AuthGuard>
+        <NavBar />
+        <div className="flex min-h-[400px] items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      </AuthGuard>
     );
   }
 
   if (!twin) {
     return (
-      <div className="flex min-h-[400px] flex-col items-center justify-center">
-        <p className="text-muted-foreground">Twin not found</p>
-        <Button variant="link" onClick={() => router.push("/dashboard")}>
+      <AuthGuard>
+        <NavBar />
+        <div className="flex min-h-[400px] flex-col items-center justify-center">
+          <p className="text-muted-foreground">Twin not found</p>
+          <Button variant="link" onClick={() => router.push("/dashboard")}>
           Back to Dashboard
         </Button>
       </div>
+      </AuthGuard>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <AuthGuard>
+      <NavBar />
+      <div className="container mx-auto py-8 space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
@@ -440,21 +450,13 @@ export function TwinDetail({ twinId }: TwinDetailProps) {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
 
-      {/* Voice Tab */}
-      <Tabs defaultValue="voice" className="w-full">
-        <TabsList>
-          <TabsTrigger value="voice">Voice Configuration</TabsTrigger>
-        </TabsList>
-        
         <TabsContent value="voice" className="mt-4">
           <Card>
             <CardHeader>
               <CardTitle>Voice Settings</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Enable/Disable */}
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium text-white">Enable Voice</p>
@@ -470,7 +472,6 @@ export function TwinDetail({ twinId }: TwinDetailProps) {
                 </Button>
               </div>
 
-              {/* Voice Selection */}
               <div className="space-y-2">
                 <p className="font-medium text-white">Voice Model</p>
                 <select
@@ -487,7 +488,6 @@ export function TwinDetail({ twinId }: TwinDetailProps) {
                 </select>
               </div>
 
-              {/* Speed */}
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <p className="font-medium text-white">Speed</p>
@@ -505,7 +505,6 @@ export function TwinDetail({ twinId }: TwinDetailProps) {
                 />
               </div>
 
-              {/* Pitch */}
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <p className="font-medium text-white">Pitch</p>
@@ -523,18 +522,18 @@ export function TwinDetail({ twinId }: TwinDetailProps) {
                 />
               </div>
 
-              {/* Test Button */}
               <Button
                 onClick={testVoice}
                 disabled={!voiceConfig.voice_enabled}
                 className="w-full"
               >
-                🔊 Test Voice
+                Test Voice
               </Button>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </AuthGuard>
   );
 }

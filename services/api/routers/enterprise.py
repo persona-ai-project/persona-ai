@@ -124,7 +124,7 @@ def _verify_enterprise_access(conn, user_id: str):
     """Verify user has enterprise subscription."""
     row = conn.execute(
         text("""SELECT s.plan_id, p.name 
-                FROM subscriptions s 
+                FROM user_subscriptions s 
                 JOIN subscription_plans p ON s.plan_id = p.id
                 WHERE s.user_id = :user_id AND s.status = 'active'"""),
         {"user_id": user_id}
@@ -634,10 +634,8 @@ def get_enterprise_features(
     try:
         row = db.execute(
             text("""SELECT p.name, p.max_twins, p.max_sources_per_twin, 
-                           p.max_messages_per_day, p.features,
-                           s.api_access_enabled, s.api_rate_limit, s.webhook_limit,
-                           s.dedicated_support, s.custom_models, s.sla_guarantee
-                    FROM subscriptions s 
+                           p.max_messages_per_day, p.features
+                    FROM user_subscriptions s 
                     JOIN subscription_plans p ON s.plan_id = p.id
                     WHERE s.user_id = :user_id AND s.status = 'active'"""),
             {"user_id": user_id}
@@ -650,18 +648,21 @@ def get_enterprise_features(
                 "features": []
             }
         
+        plan_name = (row[0] or "").lower()
+        is_enterprise = "enterprise" in plan_name or "business" in plan_name
+        
         return {
             "plan": row[0],
             "max_twins": row[1],
             "max_sources_per_twin": row[2],
             "max_messages_per_day": row[3],
             "features": row[4] or [],
-            "api_access": row[5] or False,
-            "api_rate_limit": row[6] or 0,
-            "webhook_limit": row[7] or 0,
-            "dedicated_support": row[8] or False,
-            "custom_models": row[9] or False,
-            "sla_guarantee": row[10],
+            "api_access": is_enterprise,
+            "api_rate_limit": 1000 if is_enterprise else 100,
+            "webhook_limit": 10 if is_enterprise else 0,
+            "dedicated_support": is_enterprise,
+            "custom_models": is_enterprise,
+            "sla_guarantee": "99.9% uptime" if is_enterprise else None,
         }
     finally:
         db.close()

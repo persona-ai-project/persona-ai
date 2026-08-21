@@ -161,7 +161,7 @@ def get_voice_config(
     current_user: dict = Depends(get_current_user),
 ):
     """Get voice configuration for a twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -185,7 +185,7 @@ def update_voice_config(
     current_user: dict = Depends(get_current_user),
 ):
     """Update voice configuration for a twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -246,7 +246,7 @@ async def transcribe_for_twin(
     current_user: dict = Depends(get_current_user),
 ):
     """Transcribe audio for a specific twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -285,7 +285,7 @@ async def synthesise_for_twin(
     current_user: dict = Depends(get_current_user),
 ):
     """Synthesise speech for a specific twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -328,7 +328,7 @@ async def voice_chat(
     """
     import time
     start_time = time.perf_counter()
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -364,7 +364,7 @@ async def voice_chat(
 
         # Detect language
         detected_lang = detect_language(user_text)
-        user_language = detected_lang["code"] if detected_lang["confidence"] > 0.5 else None
+        user_language = detected_lang["code"] if detected_lang["confidence"] >= 0.5 else None
 
         # Load knowledge
         knowledge_chunks = []

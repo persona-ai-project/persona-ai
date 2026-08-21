@@ -72,6 +72,8 @@ def _upsert_persona(conn, user_id: str, data: dict):
 
 @router.get("/{user_id}")
 def get_persona(user_id: str, current_user: dict = Depends(get_current_user)):
+    if user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
     try:
         with _engine.connect() as conn:
             row = _get_persona(conn, user_id)
@@ -99,7 +101,9 @@ def get_persona(user_id: str, current_user: dict = Depends(get_current_user)):
 
 
 @router.patch("/{user_id}")
-def update_persona(user_id: str, update: PersonaUpdate, current_user: dict = Depends(get_current_user)):
+def update_persona(user_id: str, body: PersonaUpdate, current_user: dict = Depends(get_current_user)):
+    if user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
     try:
         import json
         with _engine.connect() as conn:
@@ -129,6 +133,8 @@ def update_persona(user_id: str, update: PersonaUpdate, current_user: dict = Dep
 
 @router.get("/{user_id}/completeness")
 def get_completeness(user_id: str, current_user: dict = Depends(get_current_user)):
+    if user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
     try:
         import json
         with _engine.connect() as conn:
@@ -165,6 +171,8 @@ def get_completeness(user_id: str, current_user: dict = Depends(get_current_user
 
 @router.get("/{user_id}/history")
 def get_persona_history(user_id: str, current_user: dict = Depends(get_current_user)):
+    if user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
     try:
         import json
         with _engine.connect() as conn:
@@ -195,6 +203,8 @@ def get_persona_history(user_id: str, current_user: dict = Depends(get_current_u
 
 @router.delete("/{user_id}")
 def delete_persona(user_id: str, current_user: dict = Depends(get_current_user)):
+    if user_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
     try:
         with _engine.connect() as conn:
             conn.execute(

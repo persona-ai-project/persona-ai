@@ -1,9 +1,7 @@
 "use client";
 
-import { use } from "react";
 import { TwinDetail } from "@/components/dashboard/TwinDetail";
 
-export default function TwinDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  return <TwinDetail twinId={id} />;
+export default function TwinDetailPage({ params }: { params: { id: string } }) {
+  return <TwinDetail twinId={params.id} />;
 }

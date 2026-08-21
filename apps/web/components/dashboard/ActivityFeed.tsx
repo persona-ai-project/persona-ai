@@ -31,9 +31,8 @@ export function ActivityFeed({ userId }: ActivityFeedProps) {
         const token = localStorage.getItem("access_token") || "";
         const headers = { "Authorization": `Bearer ${token}` };
 
-        const [feedbackRes, ingestRes] = await Promise.all([
+        const [feedbackRes] = await Promise.all([
           fetch(`${API_URL}/feedback/stats`, { headers }),
-          fetch(`${API_URL}/ingest?user_id=${userId}`, { headers }).catch(() => null),
         ]);
 
         const newActivities: ActivityItem[] = [];

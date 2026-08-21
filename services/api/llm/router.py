@@ -23,7 +23,7 @@ def _trip_circuit(provider: str, error_type: str = "error"):
     _circuit[provider] = {"time": time.time(), "type": error_type}
 
 
-def _try_groq(messages: list, model: str = "llama-3.1-8b-instant") -> str:
+def _try_groq(messages: list, model: str = "openai/gpt-oss-120b", max_tokens: int = 1024) -> str:
     if _is_circuit_open("groq"):
         raise RuntimeError("Groq circuit open")
     try:
@@ -31,7 +31,8 @@ def _try_groq(messages: list, model: str = "llama-3.1-8b-instant") -> str:
         api_key = os.getenv("GROQ_API_KEY")
         client = Groq(api_key=api_key)
         response = client.chat.completions.create(
-            model=model, messages=messages, max_tokens=1024, temperature=0.7
+            model=model, messages=messages, max_tokens=max_tokens, temperature=0.7,
+            top_p=0.9, frequency_penalty=0.1, presence_penalty=0.1,
         )
         return response.choices[0].message.content
     except Exception as e:
@@ -81,9 +82,9 @@ def _try_gemini(messages: list) -> str:
         raise
 
 
-def chat_completion(messages: list, model: str = "llama-3.1-8b-instant", max_tokens: int = 1024) -> str:
+def chat_completion(messages: list, model: str = "openai/gpt-oss-120b", max_tokens: int = 1024) -> str:
     providers = [
-        ("groq", lambda: _try_groq(messages, model)),
+        ("groq", lambda: _try_groq(messages, model, max_tokens)),
         ("cerebras", lambda: _try_cerebras(messages)),
         ("gemini", lambda: _try_gemini(messages)),
     ]
@@ -99,3 +100,69 @@ def chat_completion(messages: list, model: str = "llama-3.1-8b-instant", max_tok
             last_error = e
 
     raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
+
+
+def _try_groq_stream(messages: list, model: str = "openai/gpt-oss-120b", max_tokens: int = 1024):
+    if _is_circuit_open("groq"):
+        raise RuntimeError("Groq circuit open")
+    try:
+        from groq import Groq
+        api_key = os.getenv("GROQ_API_KEY")
+        client = Groq(api_key=api_key)
+        stream = client.chat.completions.create(
+            model=model, messages=messages, stream=True, max_tokens=max_tokens,
+            temperature=0.7, top_p=0.9, frequency_penalty=0.1, presence_penalty=0.1,
+        )
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+    except Exception as e:
+        error_type = "rate_limit" if "429" in str(e) or "rate" in str(e).lower() else "error"
+        _trip_circuit("groq", error_type)
+        raise
+
+
+def _try_cerebras_stream(messages: list):
+    if _is_circuit_open("cerebras"):
+        raise RuntimeError("Cerebras circuit open")
+    api_key = os.getenv("CEREBRAS_API_KEY")
+    if not api_key:
+        raise RuntimeError("No CEREBRAS_API_KEY")
+    try:
+        import httpx
+        with httpx.stream(
+            "POST",
+            "https://api.cerebras.ai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": "llama-3.1-8b", "messages": messages, "max_tokens": 1024, "temperature": 0.7},
+            timeout=30.0,
+        ) as resp:
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                if line.startswith("data: ") and line != "data: [DONE]":
+                    import json
+                    data = json.loads(line[6:])
+                    delta = data.get("choices", [{}])[0].get("delta", {})
+                    if delta.get("content"):
+                        yield delta["content"]
+    except Exception as e:
+        error_type = "rate_limit" if "429" in str(e) or "rate" in str(e).lower() else "error"
+        _trip_circuit("cerebras", error_type)
+        raise
+
+
+def chat_completion_stream(messages: list, model: str = "openai/gpt-oss-120b", max_tokens: int = 1024):
+    providers = [
+        ("groq", lambda: _try_groq_stream(messages, model, max_tokens)),
+        ("cerebras", lambda: _try_cerebras_stream(messages)),
+    ]
+
+    for name, fn in providers:
+        try:
+            yield from fn()
+            print(f"[LLMRouter] {name} stream succeeded")
+            return
+        except Exception as e:
+            print(f"[LLMRouter] {name} stream failed: {e}")
+
+    raise RuntimeError("All LLM providers failed for streaming")

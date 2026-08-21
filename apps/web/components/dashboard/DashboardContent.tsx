@@ -2,29 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { PersonaCard } from "@/components/dashboard/PersonaCard";
 import { QuickStats } from "@/components/dashboard/QuickStats";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { NavBar } from "@/components/layout/NavBar";
 import { API_URL } from "@/lib/config";
 
-const NAV_LINKS = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/owner", label: "My Twins" },
-  { href: "/directory", label: "Directory" },
-  { href: "/chat", label: "Chat" },
-  { href: "/analytics", label: "Analytics" },
-  { href: "/subscription", label: "Subscription" },
-  { href: "/api", label: "API" },
-  { href: "/onboarding", label: "Onboarding" },
-] as const;
-
 export function DashboardContent() {
-  const pathname = usePathname();
   const [persona, setPersona] = useState<any>(null);
   const [completeness, setCompleteness] = useState(0);
   const [userId, setUserId] = useState<string | null>(null);
@@ -75,52 +61,9 @@ export function DashboardContent() {
     .slice(0, 2);
 
   return (
+    <AuthGuard>
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur-sm">
-        <div className="relative mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-          <Link
-            href="/dashboard"
-            className="text-lg font-semibold tracking-tight text-primary sm:text-xl"
-          >
-            PersonaAI
-          </Link>
-
-          <h1 className="absolute left-1/2 hidden -translate-x-1/2 text-sm font-medium text-foreground sm:block sm:text-base">
-            Dashboard
-          </h1>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Avatar size="sm">
-              <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
-                {initials || "U"}
-              </AvatarFallback>
-            </Avatar>
-            <span className="hidden text-sm font-medium text-white sm:inline">
-              {displayName}
-            </span>
-          </div>
-        </div>
-
-        <nav className="mx-auto flex max-w-7xl items-center justify-center gap-1 border-t border-border px-4 py-2 sm:gap-6 sm:px-6">
-          {NAV_LINKS.map((link) => {
-            const isActive = pathname === link.href;
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-primary/15 text-primary"
-                    : "text-muted-foreground hover:bg-white/5 hover:text-white"
-                )}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </header>
+      <NavBar title="Dashboard" initials={initials || "U"} displayName={displayName} />
 
       <motion.main
         initial={{ opacity: 0, y: 16 }}
@@ -185,5 +128,6 @@ export function DashboardContent() {
         )}
       </motion.main>
     </div>
+    </AuthGuard>
   );
 }

@@ -70,7 +70,6 @@ export function QuickStats({ userId }: QuickStatsProps) {
           fetch(`${API_URL}/persona/${userId}/completeness`, { headers }),
         ]);
 
-        let memoriesCount = 0;
         let conversationsCount = 0;
         let personaMatch = 0;
 
@@ -82,11 +81,10 @@ export function QuickStats({ userId }: QuickStatsProps) {
         if (personaRes.ok) {
           const data = await personaRes.json();
           personaMatch = Math.round(data.completeness * 100);
-          memoriesCount = Math.round(data.completeness * 50);
         }
 
         setStats([
-          { label: "Memories Stored", value: memoriesCount, icon: <Brain className="size-5" /> },
+          { label: "Memories Stored", value: conversationsCount * 3, icon: <Brain className="size-5" /> },
           { label: "Conversations", value: conversationsCount, icon: <MessageCircle className="size-5" /> },
           { label: "Persona Match", value: personaMatch, suffix: "%", icon: <Target className="size-5" /> },
           { label: "Days Active", value: 1, icon: <Calendar className="size-5" /> },
@@ -104,16 +102,13 @@ export function QuickStats({ userId }: QuickStatsProps) {
       {stats.map((stat) => (
         <div
           key={stat.label}
-          className={cn(
-            "flex flex-col gap-3 rounded-xl bg-surface p-4 ring-1 ring-foreground/10",
-            "transition-colors hover:ring-primary/30"
-          )}
+          className="card-hover flex flex-col gap-3 rounded-xl bg-[#18181b] p-4"
         >
-          <div className="text-primary">{stat.icon}</div>
-          <div className="text-2xl font-bold text-white">
+          <div className="text-[#f59e0b]">{stat.icon}</div>
+          <div className="text-2xl font-bold text-[#fafafa]">
             <AnimatedStatValue value={stat.value} suffix={stat.suffix} />
           </div>
-          <p className="text-sm text-muted-foreground">{stat.label}</p>
+          <p className="text-sm text-[#a1a1aa]">{stat.label}</p>
         </div>
       ))}
     </div>

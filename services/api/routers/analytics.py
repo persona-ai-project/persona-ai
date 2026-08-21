@@ -181,7 +181,7 @@ def get_twin_analytics(
     days: int = Query(30, ge=1, le=365),
 ):
     """Get detailed analytics for a specific twin."""
-    user_id = current_user["id"]
+    user_id = current_user["user_id"]
 
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
@@ -348,7 +348,7 @@ def get_knowledge_analytics(
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
     try:
-        user_id = current_user["id"]
+        user_id = current_user["user_id"]
 
         # Build query based on twin_id
         if twin_id:
@@ -425,7 +425,7 @@ def get_trends(
     engine = create_engine(DATABASE_URL)
     db = sessionmaker(bind=engine)()
     try:
-        user_id = current_user["id"]
+        user_id = current_user["user_id"]
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         # Determine date truncation

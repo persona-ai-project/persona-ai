@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CreateTwinModal } from "@/components/dashboard/CreateTwinModal";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { NavBar } from "@/components/layout/NavBar";
 import { API_URL } from "@/lib/config";
 
 interface Twin {
@@ -108,7 +110,10 @@ export function OwnerDashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <AuthGuard>
+    <div className="min-h-dvh bg-background">
+      <NavBar title="My Twins" />
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -138,7 +143,7 @@ export function OwnerDashboard() {
               </p>
             </div>
             {subscription.twins_used >= subscription.max_twins && (
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={() => router.push("/subscription")}>
                 Upgrade
               </Button>
             )}
@@ -225,6 +230,8 @@ export function OwnerDashboard() {
         onClose={() => setShowCreateModal(false)}
         onCreate={handleCreateTwin}
       />
+      </div>
     </div>
+    </AuthGuard>
   );
 }

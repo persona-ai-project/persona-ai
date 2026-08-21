@@ -78,14 +78,17 @@ async def transcribe(audio_bytes: bytes, content_type: str) -> dict:
     # Step 2 — Save raw audio to R2 immediately (before transcription)
     ext = CONTENT_TYPE_EXT.get(content_type, "audio.webm")
     r2_key = f"audio/{audio_id}/{ext}"
- 
-    upload_bytes(
-        key=r2_key,
-        data=audio_bytes,
-        content_type=content_type,
-        bucket=R2_AUDIO_BUCKET,
-    )
-    print(f"[stt] Saved audio to R2: {r2_key}")
+
+    try:
+        upload_bytes(
+            key=r2_key,
+            data=audio_bytes,
+            content_type=content_type,
+            bucket=R2_AUDIO_BUCKET,
+        )
+        print(f"[stt] Saved audio to R2: {r2_key}")
+    except Exception as e:
+        print(f"[stt] R2 upload skipped (not configured): {e}")
  
     # Step 3 — Call Groq Whisper API
     client = _get_groq_client()

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { AuthGuard } from "@/components/auth/AuthGuard";
 import { API_URL } from "@/lib/config";
 
 interface Plan {
@@ -49,6 +50,14 @@ export function SubscriptionManager() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [loading, setLoading] = useState(true);
   const [changing, setChanging] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -76,10 +85,6 @@ export function SubscriptionManager() {
   };
 
   const handleChangePlan = async (planName: string) => {
-    if (!confirm(`Are you sure you want to change to the ${planName} plan?`)) {
-      return;
-    }
-
     setChanging(true);
     try {
       const token = localStorage.getItem("access_token") || "";
@@ -94,13 +99,13 @@ export function SubscriptionManager() {
 
       if (res.ok) {
         await fetchData();
-        alert("Plan changed successfully!");
+        setToast({ message: "Plan changed successfully!", type: "success" });
       } else {
         const data = await res.json();
-        alert(data.detail || "Failed to change plan");
+        setToast({ message: data.detail || "Failed to change plan", type: "error" });
       }
     } catch (error) {
-      alert("Failed to change plan");
+      setToast({ message: "Failed to change plan", type: "error" });
     } finally {
       setChanging(false);
     }
@@ -131,7 +136,21 @@ export function SubscriptionManager() {
   }
 
   return (
+    <AuthGuard>
     <div className="space-y-6">
+      {/* Toast */}
+      {toast && (
+        <div
+          className={`fixed right-4 top-4 z-50 rounded-lg px-4 py-3 text-sm font-medium shadow-lg transition-all ${
+            toast.type === "success"
+              ? "bg-green-500/20 text-green-400 border border-green-500/30"
+              : "bg-red-500/20 text-red-400 border border-red-500/30"
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
+
       {/* Current Plan */}
       {subscription && (
         <Card className="border-primary/20">
@@ -290,16 +309,7 @@ export function SubscriptionManager() {
           })}
         </div>
       </div>
-
-      {/* Note */}
-      <Card className="border-yellow-500/20 bg-yellow-500/5">
-        <CardContent className="py-4">
-          <p className="text-sm text-muted-foreground">
-            <strong>Note:</strong> This is a mock implementation. In production, plan changes would
-            integrate with Stripe for payment processing and billing management.
-          </p>
-        </CardContent>
-      </Card>
     </div>
+    </AuthGuard>
   );
 }

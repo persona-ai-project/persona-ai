@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { NavBar } from "@/components/layout/NavBar";
 import { API_URL } from "@/lib/config";
 
 interface APIKey {
@@ -174,7 +176,10 @@ export function APIManagement() {
   }
 
   return (
-    <div className="space-y-6">
+    <AuthGuard>
+    <div className="min-h-dvh bg-background">
+      <NavBar title="API" />
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -443,16 +448,18 @@ export function APIManagement() {
                 <h3 className="mb-2 font-medium text-white">Endpoints</h3>
                 <ul className="space-y-1 text-sm text-muted-foreground">
                   <li>• <code>GET /twins</code> — List your twins</li>
-                  <li>• <code>POST /twins/{id}/chat</code> — Chat with a twin</li>
-                  <li>• <code>POST /twins/{id}/voice/chat</code> — Voice chat</li>
-                  <li>• <code>GET /twins/{id}/sources</code> — List sources</li>
-                  <li>• <code>POST /twins/{id}/interviews</code> — Start interview</li>
+                  <li>• <code>POST /twins/{`{id}`}/chat</code> — Chat with a twin</li>
+                  <li>• <code>POST /twins/{`{id}`}/voice/chat</code> — Voice chat</li>
+                  <li>• <code>GET /twins/{`{id}`}/sources</code> — List sources</li>
+                  <li>• <code>POST /twins/{`{id}`}/interviews</code> — Start interview</li>
                 </ul>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+      </div>
     </div>
+    </AuthGuard>
   );
 }

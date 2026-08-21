@@ -46,92 +46,108 @@ def _create_token(user_id: str, email: str) -> str:
 
 @router.post("/signup")
 def signup(request: SignUpRequest):
-    with _engine.connect() as conn:
-        existing = conn.execute(
-            text("SELECT id FROM users WHERE email = :email"),
-            {"email": request.email}
-        ).fetchone()
-        if existing:
-            raise HTTPException(status_code=400, detail="Email already registered")
+    try:
+        with _engine.connect() as conn:
+            existing = conn.execute(
+                text("SELECT id FROM users WHERE email = :email"),
+                {"email": request.email}
+            ).fetchone()
+            if existing:
+                raise HTTPException(status_code=400, detail="Email already registered")
 
-        user_id = str(uuid.uuid4())
-        password_hash = bcrypt.hashpw(request.password.encode(), bcrypt.gensalt()).decode()
-        now = datetime.now(timezone.utc)
-        conn.execute(
-            text("INSERT INTO users (id, email, password_hash, full_name, auth_provider, created_at, is_active) VALUES (:id, :email, :pw, :name, 'local', :now, true)"),
-            {"id": user_id, "email": request.email, "pw": password_hash, "name": request.full_name, "now": now}
-        )
-
-        # Auto-create free subscription
-        plan = conn.execute(
-            text("SELECT id FROM subscription_plans WHERE name = 'free' LIMIT 1")
-        ).fetchone()
-        if plan:
-            sub_id = str(uuid.uuid4())
+            user_id = str(uuid.uuid4())
+            password_hash = bcrypt.hashpw(request.password.encode(), bcrypt.gensalt()).decode()
+            now = datetime.now(timezone.utc)
             conn.execute(
-                text("""INSERT INTO user_subscriptions
-                    (id, user_id, plan_id, status, twins_used, messages_today, messages_used,
-                     current_period_start, current_period_end, created_at, updated_at)
-                    VALUES (:id, :uid, :pid, 'active', 0, 0, 0, :now, :now, :now, :now)"""),
-                {"id": sub_id, "uid": user_id, "pid": str(plan[0]), "now": now}
+                text("INSERT INTO users (id, email, password_hash, full_name, auth_provider, created_at, is_active) VALUES (:id, :email, :pw, :name, 'local', :now, true)"),
+                {"id": user_id, "email": request.email, "pw": password_hash, "name": request.full_name, "now": now}
             )
 
-        conn.commit()
+            # Auto-create free subscription (best effort)
+            try:
+                plan = conn.execute(
+                    text("SELECT id FROM subscription_plans WHERE name = 'free' LIMIT 1")
+                ).fetchone()
+                if plan:
+                    sub_id = str(uuid.uuid4())
+                    conn.execute(
+                        text("""INSERT INTO user_subscriptions
+                            (id, user_id, plan_id, status, twins_used, messages_today, messages_used,
+                             current_period_start, current_period_end, created_at, updated_at)
+                            VALUES (:id, :uid, :pid, 'active', 0, 0, 0, :now, :now, :now, :now)"""),
+                        {"id": sub_id, "uid": user_id, "pid": str(plan[0]), "now": now}
+                    )
+            except Exception:
+                pass
 
-    token = _create_token(user_id, request.email)
-    return {
-        "user_id": user_id,
-        "email": request.email,
-        "access_token": token,
-        "message": "Signup successful!"
-    }
+            conn.commit()
+
+        token = _create_token(user_id, request.email)
+        return {
+            "user_id": user_id,
+            "email": request.email,
+            "access_token": token,
+            "message": "Signup successful!"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Signup failed: {str(e)}")
 
 
 @router.post("/login")
 def login(request: LoginRequest):
-    with _engine.connect() as conn:
-        row = conn.execute(
-            text("SELECT id, email, password_hash FROM users WHERE email = :email"),
-            {"email": request.email}
-        ).fetchone()
-
-    if not row:
-        raise HTTPException(status_code=400, detail="Invalid email or password")
-
-    user_id, email, password_hash = row
-    user_id = str(user_id)
-    if not password_hash or not bcrypt.checkpw(request.password.encode(), password_hash.encode()):
-        raise HTTPException(status_code=400, detail="Invalid email or password")
-
-    # Ensure user has a subscription (for users created before auto-subscribe)
-    with _engine.connect() as conn:
-        existing_sub = conn.execute(
-            text("SELECT id FROM user_subscriptions WHERE user_id = :uid LIMIT 1"),
-            {"uid": user_id}
-        ).fetchone()
-        if not existing_sub:
-            plan = conn.execute(
-                text("SELECT id FROM subscription_plans WHERE name = 'free' LIMIT 1")
+    try:
+        with _engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT id, email, password_hash FROM users WHERE email = :email"),
+                {"email": request.email}
             ).fetchone()
-            if plan:
-                sub_id = str(uuid.uuid4())
-                now = datetime.now(timezone.utc)
-                conn.execute(
-                    text("""INSERT INTO user_subscriptions
-                        (id, user_id, plan_id, status, twins_used, messages_today, messages_used,
-                         current_period_start, current_period_end, created_at, updated_at)
-                        VALUES (:id, :uid, :pid, 'active', 0, 0, 0, :now, :now, :now, :now)"""),
-                    {"id": sub_id, "uid": user_id, "pid": str(plan[0]), "now": now}
-                )
-                conn.commit()
 
-    token = _create_token(user_id, email)
-    return {
-        "user_id": user_id,
-        "email": email,
-        "access_token": token,
-        "message": "Login successful!"
-    }
+        if not row:
+            raise HTTPException(status_code=400, detail="Invalid email or password")
+
+        user_id, email, password_hash = row
+        user_id = str(user_id)
+        if not password_hash or not bcrypt.checkpw(request.password.encode(), password_hash.encode()):
+            raise HTTPException(status_code=400, detail="Invalid email or password")
+
+        # Ensure user has a subscription (for users created before auto-subscribe)
+        try:
+            with _engine.connect() as conn:
+                existing_sub = conn.execute(
+                    text("SELECT id FROM user_subscriptions WHERE user_id = :uid LIMIT 1"),
+                    {"uid": user_id}
+                ).fetchone()
+                if not existing_sub:
+                    plan = conn.execute(
+                        text("SELECT id FROM subscription_plans WHERE name = 'free' LIMIT 1")
+                    ).fetchone()
+                    if plan:
+                        sub_id = str(uuid.uuid4())
+                        now = datetime.now(timezone.utc)
+                        conn.execute(
+                            text("""INSERT INTO user_subscriptions
+                                (id, user_id, plan_id, status, twins_used, messages_today, messages_used,
+                                 current_period_start, current_period_end, created_at, updated_at)
+                                VALUES (:id, :uid, :pid, 'active', 0, 0, 0, :now, :now, :now, :now)"""),
+                            {"id": sub_id, "uid": user_id, "pid": str(plan[0]), "now": now}
+                        )
+                        conn.commit()
+        except Exception:
+            pass
+
+        token = _create_token(user_id, email)
+        return {
+            "user_id": user_id,
+            "email": email,
+            "access_token": token,
+            "message": "Login successful!"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
 
 @router.post("/logout")

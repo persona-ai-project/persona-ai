@@ -3,7 +3,7 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import { LoginForm } from "@/components/auth/LoginForm";
 
 export const metadata = {
-  title: "Log In | PersonaAI",
+  title: "Log In — PersonaAI",
   description: "Sign in to your PersonaAI account",
 };
 

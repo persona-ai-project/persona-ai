@@ -32,8 +32,12 @@ export function LoginForm() {
     e.preventDefault();
     setError("");
 
-    if (!email.trim() || !password) {
-      setError("Please fill in all fields");
+    if (!email.trim()) {
+      setError("Email is required");
+      return;
+    }
+    if (!password) {
+      setError("Password is required");
       return;
     }
 
@@ -42,17 +46,21 @@ export function LoginForm() {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Invalid credentials");
+      if (!res.ok) throw new Error(data.detail || "Invalid email or password");
 
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("user_id", data.user_id);
       toast.success("Logged in!");
       router.push("/dashboard");
     } catch (err: any) {
-      setError(err.message || "Login failed");
+      if (err.message?.includes("Failed to fetch") || err.message?.includes("NetworkError")) {
+        setError("Cannot reach server. Please try again later.");
+      } else {
+        setError(err.message || "Login failed. Please try again.");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -104,12 +112,16 @@ export function LoginForm() {
           </div>
         </div>
 
-        {error && <p className="text-xs text-red-500">{error}</p>}
+        {error && (
+          <div className="rounded-lg bg-red-500/5 border border-red-500/10 p-3">
+            <p className="text-xs text-red-500">{error}</p>
+          </div>
+        )}
 
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full btn-gold py-2.5 rounded-xl text-sm font-semibold text-primary-foreground disabled:opacity-50 flex items-center justify-center gap-2"
+          className="w-full btn-gold py-2.5 rounded-xl text-sm font-semibold text-primary-foreground disabled:opacity-50 flex items-center justify-center gap-2 transition-all"
         >
           {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Log in"}
         </button>

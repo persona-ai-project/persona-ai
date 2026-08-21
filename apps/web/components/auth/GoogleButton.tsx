@@ -103,22 +103,8 @@ export function GoogleButton({ className }: GoogleButtonProps) {
         );
         localStorage.setItem("user_id", (data as { user_id: string }).user_id);
 
-        const personaRes = await fetch(
-          `${API_URL}/persona/${(data as { user_id: string }).user_id}`,
-          {
-            headers: {
-              Authorization: `Bearer ${(data as { access_token: string }).access_token}`,
-            },
-          }
-        );
-        const persona = await personaRes.json();
-        const isEmpty =
-          !persona?.traits?.length &&
-          !persona?.communication_style &&
-          !persona?.identity?.name;
-
         toast.success("Logged in with Google!");
-        router.push(isEmpty ? "/onboarding" : "/dashboard");
+        router.push("/dashboard");
       } catch (error) {
         setIsLoading(false);
         toast.error(
@@ -170,7 +156,20 @@ export function GoogleButton({ className }: GoogleButtonProps) {
   }, [handleGoogleCredential]);
 
   if (!GOOGLE_CLIENT_ID) {
-    return null;
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        disabled
+        className={cn(
+          "h-11 w-full border-white/[0.06] bg-surface text-muted-foreground cursor-not-allowed",
+          className
+        )}
+      >
+        <GoogleIcon />
+        Google sign-in unavailable
+      </Button>
+    );
   }
 
   return (

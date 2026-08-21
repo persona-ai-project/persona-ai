@@ -45,6 +45,11 @@ class TwinCreate(BaseModel):
     tagline: str | None = Field(None, max_length=200)
     bio: str | None = None
     category_id: str | None = None
+    role: str | None = None
+    expertise: list[str] | None = None
+    accent_color: str | None = None
+    is_public: bool = True
+    twin_type: str | None = None
     is_public_figure: bool = False
     public_figure_name: str | None = None
     personality_config: dict | None = None

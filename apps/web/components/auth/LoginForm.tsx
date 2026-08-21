@@ -49,7 +49,13 @@ export function LoginForm() {
         body: JSON.stringify({ email: email.trim(), password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Invalid email or password");
+      if (!res.ok) {
+        const msg = data.detail || "Invalid email or password";
+        if (msg.toLowerCase().includes("not found") || msg.toLowerCase().includes("account not found")) {
+          throw new Error("No account found with this email. Please sign up first.");
+        }
+        throw new Error(msg);
+      }
 
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("user_id", data.user_id);

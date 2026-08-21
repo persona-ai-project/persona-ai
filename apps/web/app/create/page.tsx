@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 import { API_URL } from "@/lib/config";
 
 const ACCENT_COLORS = [
@@ -70,11 +71,19 @@ export default function CreateTwinPage() {
         setTwinId(data.id);
         setStep(2);
       } else {
-        const err = await res.json();
-        alert(err.detail || "Failed to create twin");
+        const err = await res.json().catch(() => ({ detail: "Failed to create twin" }));
+        if (res.status === 401) {
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("user_id");
+          toast.error("Session expired. Please log in again.");
+          router.push("/login");
+          return;
+        }
+        toast.error(err.detail || "Failed to create twin. Please try again.");
       }
     } catch (e) {
       console.error("Failed to create twin:", e);
+      toast.error("Could not reach server. Please try again.");
     } finally {
       setLoading(false);
     }

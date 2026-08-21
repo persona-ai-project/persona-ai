@@ -60,6 +60,12 @@ export default function DashboardPage() {
       const res = await fetch(`${API_URL}/twins`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("user_id");
+        router.push("/login");
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setTwins(data.twins || data || []);

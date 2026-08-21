@@ -23,9 +23,19 @@ export default function AppLayout({
     // Decode JWT to get email
     try {
       const payload = JSON.parse(atob(token.split(".")[1]));
+      // Check if token is expired
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("user_id");
+        router.push("/login");
+        return;
+      }
       setUserEmail(payload.email || "");
     } catch {
-      setUserEmail("");
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("user_id");
+      router.push("/login");
+      return;
     }
 
     setLoading(false);
